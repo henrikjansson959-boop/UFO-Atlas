@@ -132,7 +132,7 @@ The system will be built using TypeScript for both backend and frontend, with Su
     - **Property 30: Title Similarity Detection** - >90% title similarity flags is_potential_duplicate
     - **Validates: Requirements 7.1, 7.2, 7.3, 7.4**
 
-- [~] 5. Implement content extraction
+- [x] 5. Implement content extraction
   - [x] 5.1 Create ContentExtractor class with Puppeteer/Cheerio
     - Implement extract method to fetch HTML from URL
     - Extract title, description, date, content type from HTML structure
@@ -148,7 +148,7 @@ The system will be built using TypeScript for both backend and frontend, with Su
     - **Property 10: Extraction Error Handling** - Failed extraction logs error and skips content
     - **Validates: Requirements 2.1, 2.2, 2.3, 2.4, 2.5**
   
-  - [~] 5.3 Integrate extractor with validator and duplicate detector
+  - [x] 5.3 Integrate extractor with validator and duplicate detector
     - Wire ContentExtractor to call DataValidator before storage
     - Wire ContentExtractor to call DuplicateDetector before storage
     - Only insert valid, non-duplicate content into Review_Queue

@@ -1,10 +1,104 @@
 import puppeteer, { Browser } from 'puppeteer';
 import * as cheerio from 'cheerio';
 import axios from 'axios';
-import { ExtractedContent } from '../types';
+import { ExtractedContent, DataValidator, DuplicateDetector, StorageService } from '../types';
 
 export class ContentExtractor {
   private browser: Browser | null = null;
+  private validator: DataValidator | null = null;
+  private duplicateDetector: DuplicateDetector | null = null;
+  private storageService: StorageService | null = null;
+
+  /**
+   * Set the validator for content validation
+   * @param validator - DataValidator instance
+   */
+  setValidator(validator: DataValidator): void {
+    this.validator = validator;
+  }
+
+  /**
+   * Set the duplicate detector for duplicate checking
+   * @param duplicateDetector - DuplicateDetector instance
+   */
+  setDuplicateDetector(duplicateDetector: DuplicateDetector): void {
+    this.duplicateDetector = duplicateDetector;
+  }
+
+  /**
+   * Set the storage service for persisting content
+   * @param storageService - StorageService instance
+   */
+  setStorageService(storageService: StorageService): void {
+    this.storageService = storageService;
+  }
+
+  /**
+   * Extract, validate, check for duplicates, and store content
+   * This is the integrated method that orchestrates the full pipeline
+   * 
+   * @param url - Source URL to extract from
+   * @returns Content ID if stored successfully, null otherwise
+   * 
+   * Validates:
+   * - Requirement 3.1: Only insert valid, non-duplicate content into Review_Queue
+   * - Requirement 7.1: Check for duplicates before storage
+   * - Requirement 7.2: Skip duplicate content
+   * - Requirement 10.1: Validate content before storage
+   */
+  async extractAndStore(url: string): Promise<number | null> {
+    // Extract content
+    const content = await this.extract(url);
+    if (!content) {
+      this.logError('extractAndStore', url, new Error('Extraction failed'));
+      return null;
+    }
+
+    // Validate content
+    if (!this.validator) {
+      throw new Error('Validator not set. Call setValidator() before using extractAndStore()');
+    }
+
+    const validationResult = this.validator.validate(content);
+    if (!validationResult.isValid) {
+      this.logValidationError(url, validationResult.errors);
+      return null;
+    }
+
+    // Check for duplicates
+    if (!this.duplicateDetector) {
+      throw new Error('DuplicateDetector not set. Call setDuplicateDetector() before using extractAndStore()');
+    }
+
+    const duplicateCheck = await this.duplicateDetector.checkDuplicate(content);
+    
+    // Skip exact duplicates
+    if (duplicateCheck.isDuplicate) {
+      this.logDuplicate(url, duplicateCheck.matchedContentId);
+      return null;
+    }
+
+    // Store content (flag potential duplicates)
+    if (!this.storageService) {
+      throw new Error('StorageService not set. Call setStorageService() before using extractAndStore()');
+    }
+
+    try {
+      const contentId = await this.storageService.insertReviewQueue(
+        content,
+        duplicateCheck.isPotentialDuplicate
+      );
+      
+      if (duplicateCheck.isPotentialDuplicate) {
+        this.logPotentialDuplicate(url, contentId, duplicateCheck.similarityScore);
+      }
+      
+      return contentId;
+    } catch (error) {
+      this.logError('extractAndStore', url, error);
+      return null;
+    }
+  }
 
   /**
    * Extract structured data from a URL
@@ -308,6 +402,37 @@ export class ContentExtractor {
     console.error(`[ContentExtractor.${method}] Error extracting from ${url}:`, {
       message: errorMessage,
       stack: stackTrace,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Log validation errors
+   */
+  private logValidationError(url: string, errors: string[]): void {
+    console.warn(`[ContentExtractor] Validation failed for ${url}:`, {
+      errors,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Log duplicate detection
+   */
+  private logDuplicate(url: string, matchedContentId?: number): void {
+    console.info(`[ContentExtractor] Duplicate detected for ${url}:`, {
+      matchedContentId,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Log potential duplicate detection
+   */
+  private logPotentialDuplicate(url: string, contentId: number, similarityScore?: number): void {
+    console.warn(`[ContentExtractor] Potential duplicate flagged for ${url}:`, {
+      contentId,
+      similarityScore,
       timestamp: new Date().toISOString()
     });
   }

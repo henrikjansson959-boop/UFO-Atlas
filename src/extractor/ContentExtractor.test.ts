@@ -394,4 +394,257 @@ describe('ContentExtractor', () => {
       expect(mockBrowser.close).toHaveBeenCalled();
     });
   });
+
+  describe('extractAndStore integration', () => {
+    let mockValidator: any;
+    let mockDuplicateDetector: any;
+    let mockStorageService: any;
+
+    beforeEach(() => {
+      mockValidator = {
+        validate: jest.fn()
+      };
+
+      mockDuplicateDetector = {
+        checkDuplicate: jest.fn()
+      };
+
+      mockStorageService = {
+        insertReviewQueue: jest.fn()
+      };
+
+      extractor.setValidator(mockValidator);
+      extractor.setDuplicateDetector(mockDuplicateDetector);
+      extractor.setStorageService(mockStorageService);
+    });
+
+    it('should extract, validate, check duplicates, and store valid content', async () => {
+      const mockHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>UFO Sighting</title>
+            <meta name="description" content="A UFO was spotted">
+          </head>
+          <body></body>
+        </html>
+      `;
+
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+      mockValidator.validate.mockReturnValue({ isValid: true, errors: [] });
+      mockDuplicateDetector.checkDuplicate.mockResolvedValue({
+        isDuplicate: false,
+        isPotentialDuplicate: false
+      });
+      mockStorageService.insertReviewQueue.mockResolvedValue(123);
+
+      const contentId = await extractor.extractAndStore('https://example.com/ufo');
+
+      expect(contentId).toBe(123);
+      expect(mockValidator.validate).toHaveBeenCalled();
+      expect(mockDuplicateDetector.checkDuplicate).toHaveBeenCalled();
+      expect(mockStorageService.insertReviewQueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'UFO Sighting',
+          sourceUrl: 'https://example.com/ufo'
+        }),
+        false
+      );
+    });
+
+    it('should return null when extraction fails', async () => {
+      mockedAxios.get.mockRejectedValue(new Error('Network error'));
+
+      const contentId = await extractor.extractAndStore('https://example.com/error');
+
+      expect(contentId).toBeNull();
+      expect(mockValidator.validate).not.toHaveBeenCalled();
+      expect(mockDuplicateDetector.checkDuplicate).not.toHaveBeenCalled();
+      expect(mockStorageService.insertReviewQueue).not.toHaveBeenCalled();
+    });
+
+    it('should return null when validation fails', async () => {
+      const mockHtml = '<html><head><title>Test</title></head></html>';
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+      mockValidator.validate.mockReturnValue({
+        isValid: false,
+        errors: ['Title is required']
+      });
+
+      const contentId = await extractor.extractAndStore('https://example.com/invalid');
+
+      expect(contentId).toBeNull();
+      expect(mockValidator.validate).toHaveBeenCalled();
+      expect(mockDuplicateDetector.checkDuplicate).not.toHaveBeenCalled();
+      expect(mockStorageService.insertReviewQueue).not.toHaveBeenCalled();
+    });
+
+    it('should return null and skip storage when exact duplicate is found', async () => {
+      const mockHtml = '<html><head><title>Duplicate Content</title></head></html>';
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+      mockValidator.validate.mockReturnValue({ isValid: true, errors: [] });
+      mockDuplicateDetector.checkDuplicate.mockResolvedValue({
+        isDuplicate: true,
+        isPotentialDuplicate: false,
+        matchedContentId: 456
+      });
+
+      const contentId = await extractor.extractAndStore('https://example.com/duplicate');
+
+      expect(contentId).toBeNull();
+      expect(mockValidator.validate).toHaveBeenCalled();
+      expect(mockDuplicateDetector.checkDuplicate).toHaveBeenCalled();
+      expect(mockStorageService.insertReviewQueue).not.toHaveBeenCalled();
+    });
+
+    it('should store content with potential duplicate flag when similar title found', async () => {
+      const mockHtml = '<html><head><title>Similar Content</title></head></html>';
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+      mockValidator.validate.mockReturnValue({ isValid: true, errors: [] });
+      mockDuplicateDetector.checkDuplicate.mockResolvedValue({
+        isDuplicate: false,
+        isPotentialDuplicate: true,
+        matchedContentId: 789,
+        similarityScore: 0.92
+      });
+      mockStorageService.insertReviewQueue.mockResolvedValue(999);
+
+      const contentId = await extractor.extractAndStore('https://example.com/similar');
+
+      expect(contentId).toBe(999);
+      expect(mockStorageService.insertReviewQueue).toHaveBeenCalledWith(
+        expect.any(Object),
+        true // isPotentialDuplicate flag
+      );
+    });
+
+    it('should throw error when validator is not set', async () => {
+      const extractorWithoutValidator = new ContentExtractor();
+      const mockHtml = '<html><head><title>Test</title></head></html>';
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+
+      await expect(
+        extractorWithoutValidator.extractAndStore('https://example.com/test')
+      ).rejects.toThrow('Validator not set');
+    });
+
+    it('should throw error when duplicate detector is not set', async () => {
+      const extractorWithoutDetector = new ContentExtractor();
+      extractorWithoutDetector.setValidator(mockValidator);
+      
+      const mockHtml = '<html><head><title>Test</title></head></html>';
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+      mockValidator.validate.mockReturnValue({ isValid: true, errors: [] });
+
+      await expect(
+        extractorWithoutDetector.extractAndStore('https://example.com/test')
+      ).rejects.toThrow('DuplicateDetector not set');
+    });
+
+    it('should throw error when storage service is not set', async () => {
+      const extractorWithoutStorage = new ContentExtractor();
+      extractorWithoutStorage.setValidator(mockValidator);
+      extractorWithoutStorage.setDuplicateDetector(mockDuplicateDetector);
+      
+      const mockHtml = '<html><head><title>Test</title></head></html>';
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+      mockValidator.validate.mockReturnValue({ isValid: true, errors: [] });
+      mockDuplicateDetector.checkDuplicate.mockResolvedValue({
+        isDuplicate: false,
+        isPotentialDuplicate: false
+      });
+
+      await expect(
+        extractorWithoutStorage.extractAndStore('https://example.com/test')
+      ).rejects.toThrow('StorageService not set');
+    });
+
+    it('should return null when storage fails', async () => {
+      const mockHtml = '<html><head><title>Test</title></head></html>';
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+      mockValidator.validate.mockReturnValue({ isValid: true, errors: [] });
+      mockDuplicateDetector.checkDuplicate.mockResolvedValue({
+        isDuplicate: false,
+        isPotentialDuplicate: false
+      });
+      mockStorageService.insertReviewQueue.mockRejectedValue(new Error('Database error'));
+
+      const contentId = await extractor.extractAndStore('https://example.com/storage-error');
+
+      expect(contentId).toBeNull();
+    });
+
+    it('should log validation errors when validation fails', async () => {
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+      
+      const mockHtml = '<html><head><title></title></head></html>';
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+      mockValidator.validate.mockReturnValue({
+        isValid: false,
+        errors: ['Title is required', 'Source URL is invalid']
+      });
+
+      await extractor.extractAndStore('https://example.com/invalid');
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Validation failed'),
+        expect.objectContaining({
+          errors: ['Title is required', 'Source URL is invalid']
+        })
+      );
+      
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should log duplicate detection when exact duplicate found', async () => {
+      const consoleInfoSpy = jest.spyOn(console, 'info').mockImplementation();
+      
+      const mockHtml = '<html><head><title>Duplicate</title></head></html>';
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+      mockValidator.validate.mockReturnValue({ isValid: true, errors: [] });
+      mockDuplicateDetector.checkDuplicate.mockResolvedValue({
+        isDuplicate: true,
+        isPotentialDuplicate: false,
+        matchedContentId: 123
+      });
+
+      await extractor.extractAndStore('https://example.com/duplicate');
+
+      expect(consoleInfoSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Duplicate detected'),
+        expect.objectContaining({
+          matchedContentId: 123
+        })
+      );
+      
+      consoleInfoSpy.mockRestore();
+    });
+
+    it('should log potential duplicate when similar title found', async () => {
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+      
+      const mockHtml = '<html><head><title>Similar</title></head></html>';
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+      mockValidator.validate.mockReturnValue({ isValid: true, errors: [] });
+      mockDuplicateDetector.checkDuplicate.mockResolvedValue({
+        isDuplicate: false,
+        isPotentialDuplicate: true,
+        matchedContentId: 456,
+        similarityScore: 0.95
+      });
+      mockStorageService.insertReviewQueue.mockResolvedValue(789);
+
+      await extractor.extractAndStore('https://example.com/similar');
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Potential duplicate flagged'),
+        expect.objectContaining({
+          contentId: 789,
+          similarityScore: 0.95
+        })
+      );
+      
+      consoleWarnSpy.mockRestore();
+    });
+  });
 });

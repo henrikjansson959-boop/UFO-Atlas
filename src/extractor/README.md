@@ -1,16 +1,21 @@
 # Content Extractor
 
-The ContentExtractor class is responsible for fetching web pages and extracting structured UFO-related content.
+The ContentExtractor class is responsible for fetching web pages and extracting structured UFO-related content. It integrates with DataValidator and DuplicateDetector to ensure only valid, non-duplicate content is stored.
 
 ## Features
 
 - **Dual Extraction Strategy**: Tries fast static HTML parsing with Cheerio first, falls back to Puppeteer for JavaScript-heavy sites
 - **Comprehensive Metadata Extraction**: Extracts title, description, date, and content type from various HTML structures
 - **Smart Content Classification**: Automatically classifies content as event, person, theory, or news based on keywords
+- **Integrated Validation**: Validates extracted content before storage using DataValidator
+- **Duplicate Detection**: Checks for exact and similar duplicates using DuplicateDetector
+- **Automatic Storage**: Stores valid, non-duplicate content directly to Review_Queue
 - **Error Handling**: Gracefully handles network errors, timeouts, and extraction failures with logging
 - **Raw HTML Storage**: Preserves original HTML for admin reference
 
 ## Usage
+
+### Basic Extraction (without storage)
 
 ```typescript
 import { ContentExtractor } from './extractor';
@@ -32,6 +37,64 @@ if (content) {
 // Clean up resources when done
 await extractor.close();
 ```
+
+### Integrated Extraction with Validation and Storage (Recommended)
+
+```typescript
+import { ContentExtractor } from './extractor';
+import { DataValidator } from '../validator/DataValidator';
+import { DuplicateDetector } from '../duplicate/DuplicateDetector';
+import { StorageService } from '../storage/StorageService';
+
+// Initialize components
+const extractor = new ContentExtractor();
+const validator = new DataValidator();
+const duplicateDetector = new DuplicateDetector(supabaseUrl, supabaseKey);
+const storageService = new StorageService(supabaseUrl, supabaseKey);
+
+// Wire components together
+extractor.setValidator(validator);
+extractor.setDuplicateDetector(duplicateDetector);
+extractor.setStorageService(storageService);
+
+// Extract, validate, check duplicates, and store in one call
+const contentId = await extractor.extractAndStore('https://example.com/ufo-sighting');
+
+if (contentId) {
+  console.log('Content stored successfully with ID:', contentId);
+} else {
+  console.log('Content was not stored (extraction failed, validation failed, or duplicate detected)');
+}
+
+// Clean up resources when done
+await extractor.close();
+```
+
+## Integration Pipeline
+
+The `extractAndStore` method orchestrates the complete content processing pipeline:
+
+1. **Extract**: Fetch and parse HTML to extract structured content
+2. **Validate**: Check required fields and data formats using DataValidator
+3. **Check Duplicates**: Verify content is not a duplicate using DuplicateDetector
+4. **Store**: Insert valid, non-duplicate content into Review_Queue
+
+### Pipeline Behavior
+
+- **Extraction Fails**: Returns `null`, logs error
+- **Validation Fails**: Returns `null`, logs validation errors
+- **Exact Duplicate Found**: Returns `null`, logs duplicate detection (content not stored)
+- **Potential Duplicate Found**: Stores content with `is_potential_duplicate` flag, returns content ID
+- **Success**: Stores content, returns content ID
+
+### Logging
+
+The integration pipeline provides detailed logging:
+
+- **Validation Errors**: Logs which fields failed validation
+- **Duplicate Detection**: Logs when exact duplicates are found with matched content ID
+- **Potential Duplicates**: Logs when similar content is flagged with similarity score
+- **Storage Errors**: Logs database errors during insertion
 
 ## Extraction Strategy
 
@@ -114,6 +177,10 @@ This implementation validates the following requirements:
 - **Requirement 2.3**: Parses dates into ISO 8601 format (via JavaScript Date object)
 - **Requirement 2.4**: Logs failures and skips sources that fail extraction
 - **Requirement 2.5**: Stores raw HTML for admin reference
+- **Requirement 3.1**: Only inserts valid, non-duplicate content into Review_Queue with status "pending"
+- **Requirement 7.1**: Checks for duplicate source_url before storage
+- **Requirement 7.2**: Skips storage when exact duplicate is found
+- **Requirement 10.1**: Validates content before storage using DataValidator
 
 ## Testing
 
@@ -126,6 +193,14 @@ The ContentExtractor includes comprehensive unit tests covering:
 - Error handling and logging
 - Puppeteer fallback behavior
 - Edge cases (missing fields, invalid dates, empty content)
+- **Integration tests for extractAndStore**:
+  - Successful extraction, validation, and storage
+  - Extraction failure handling
+  - Validation failure handling
+  - Exact duplicate detection and skipping
+  - Potential duplicate flagging
+  - Storage error handling
+  - Component dependency validation
 
 Run tests:
 ```bash
