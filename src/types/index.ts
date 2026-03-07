@@ -197,6 +197,7 @@ export interface StorageService {
     scanJobId: string,
     keywordsUsed: string[],
     selectedTagIds: number[],
+    itemsDiscovered: number,
     savedSearchId?: number,
     savedSearchVersion?: number
   ): Promise<number>;

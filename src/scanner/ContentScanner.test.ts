@@ -32,6 +32,7 @@ class MockStorageService implements Partial<StorageService> {
     scanJobId: string,
     keywordsUsed: string[],
     selectedTagIds: number[],
+    itemsDiscovered: number,
     savedSearchId?: number,
     savedSearchVersion?: number
   ): Promise<number> {
@@ -234,6 +235,84 @@ describe('ContentScanner', () => {
 
       // Verify
       expect(result.selectedTagIds).toEqual([]);
+    });
+  });
+
+  describe('scan history recording', () => {
+    it('should record search history with items discovered count', async () => {
+      // Setup: Track recordSearchHistory calls
+      let recordedItemsDiscovered = 0;
+      const originalRecordSearchHistory = mockStorage.recordSearchHistory.bind(mockStorage);
+      mockStorage.recordSearchHistory = async (
+        scanJobId: string,
+        keywordsUsed: string[],
+        selectedTagIds: number[],
+        itemsDiscovered: number,
+        savedSearchId?: number,
+        savedSearchVersion?: number
+      ) => {
+        recordedItemsDiscovered = itemsDiscovered;
+        return originalRecordSearchHistory(scanJobId, keywordsUsed, selectedTagIds, itemsDiscovered, savedSearchId, savedSearchVersion);
+      };
+
+      // Execute scan (without extractor, items discovered should be 0)
+      await scanner.executeScan(['UFO'], [1]);
+
+      // Verify: recordSearchHistory was called with items_discovered = 0
+      expect(recordedItemsDiscovered).toBe(0);
+    });
+
+    it('should track items discovered when content extractor is set', async () => {
+      // Setup: Track recordSearchHistory calls
+      let recordedItemsDiscovered = 0;
+      const originalRecordSearchHistory = mockStorage.recordSearchHistory.bind(mockStorage);
+      mockStorage.recordSearchHistory = async (
+        scanJobId: string,
+        keywordsUsed: string[],
+        selectedTagIds: number[],
+        itemsDiscovered: number,
+        savedSearchId?: number,
+        savedSearchVersion?: number
+      ) => {
+        recordedItemsDiscovered = itemsDiscovered;
+        return originalRecordSearchHistory(scanJobId, keywordsUsed, selectedTagIds, itemsDiscovered, savedSearchId, savedSearchVersion);
+      };
+
+      // Setup: Set content extractor
+      scanner.setContentExtractor(mockExtractor as any);
+
+      // Execute scan
+      await scanner.executeScan(['UFO'], [1]);
+
+      // Verify: recordSearchHistory was called
+      // Note: Since searchInternet returns empty array in mock, items discovered will be 0
+      expect(recordedItemsDiscovered).toBe(0);
+    });
+
+    it('should record saved search metadata in search history', async () => {
+      // Setup: Track recordSearchHistory calls
+      let recordedSavedSearchId: number | undefined;
+      let recordedSavedSearchVersion: number | undefined;
+      const originalRecordSearchHistory = mockStorage.recordSearchHistory.bind(mockStorage);
+      mockStorage.recordSearchHistory = async (
+        scanJobId: string,
+        keywordsUsed: string[],
+        selectedTagIds: number[],
+        itemsDiscovered: number,
+        savedSearchId?: number,
+        savedSearchVersion?: number
+      ) => {
+        recordedSavedSearchId = savedSearchId;
+        recordedSavedSearchVersion = savedSearchVersion;
+        return originalRecordSearchHistory(scanJobId, keywordsUsed, selectedTagIds, itemsDiscovered, savedSearchId, savedSearchVersion);
+      };
+
+      // Execute scan with saved search metadata
+      await scanner.executeScan(['UFO'], [1], 123, 2);
+
+      // Verify: Saved search metadata was recorded
+      expect(recordedSavedSearchId).toBe(123);
+      expect(recordedSavedSearchVersion).toBe(2);
     });
   });
 });

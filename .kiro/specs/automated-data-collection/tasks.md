@@ -154,7 +154,7 @@ The system will be built using TypeScript for both backend and frontend, with Su
     - Only insert valid, non-duplicate content into Review_Queue
     - _Requirements: 3.1, 7.1, 7.2, 10.1_
 
-- [~] 6. Implement content scanner
+- [x] 6. Implement content scanner
   - [x] 6.1 Create ContentScanner class
     - Implement getActiveKeywords method to retrieve from Keyword_Config
     - Implement executeScan method with keyword and tag filter parameters
@@ -170,7 +170,7 @@ The system will be built using TypeScript for both backend and frontend, with Su
     - **Property 6: Scan Error Resilience** - Failed keyword continues with remaining keywords
     - **Validates: Requirements 1.1, 1.2, 1.6, 1.8**
   
-  - [~] 6.3 Implement scan history recording
+  - [x] 6.3 Implement scan history recording
     - Call StorageService.recordSearchHistory after each scan
     - Record scan_job_id, keywords_used, selected_tag_ids, saved_search references
     - Log items_discovered count

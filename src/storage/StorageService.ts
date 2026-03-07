@@ -503,30 +503,31 @@ export class StorageService implements IStorageService {
    * Validates: Requirements 1.4, 1.5, 3.8, 3.10, 3.11, 3.12
    */
   async recordSearchHistory(
-    scanJobId: string,
-    keywordsUsed: string[],
-    selectedTagIds: number[],
-    savedSearchId?: number,
-    savedSearchVersion?: number
-  ): Promise<number> {
-    return this.withRetry(async () => {
-      const { data, error } = await this.client
-        .from('Search_History')
-        .insert({
-          scan_job_id: scanJobId,
-          keywords_used: keywordsUsed,
-          selected_tag_ids: selectedTagIds,
-          saved_search_id: savedSearchId || null,
-          saved_search_version: savedSearchVersion || null,
-          items_discovered: 0,
-        })
-        .select('search_id')
-        .single();
+      scanJobId: string,
+      keywordsUsed: string[],
+      selectedTagIds: number[],
+      itemsDiscovered: number,
+      savedSearchId?: number,
+      savedSearchVersion?: number
+    ): Promise<number> {
+      return this.withRetry(async () => {
+        const { data, error } = await this.client
+          .from('Search_History')
+          .insert({
+            scan_job_id: scanJobId,
+            keywords_used: keywordsUsed,
+            selected_tag_ids: selectedTagIds,
+            saved_search_id: savedSearchId || null,
+            saved_search_version: savedSearchVersion || null,
+            items_discovered: itemsDiscovered,
+          })
+          .select('search_id')
+          .single();
 
-      if (error) throw error;
-      return data.search_id;
-    }, 'recordSearchHistory');
-  }
+        if (error) throw error;
+        return data.search_id;
+      }, 'recordSearchHistory');
+    }
 
   /**
    * Get search history

@@ -50,71 +50,72 @@ export class ContentScanner implements IContentScanner {
    * @returns Scan job result with discovered URLs
    */
   async executeScan(
-    keywords: string[],
-    tagIds: number[],
-    savedSearchId?: number,
-    savedSearchVersion?: number
-  ): Promise<ScanResult> {
-    const scanJobId = this.generateScanJobId();
-    const searchTimestamp = new Date();
-    const discoveredUrls: string[] = [];
-    let errorCount = 0;
+      keywords: string[],
+      tagIds: number[],
+      savedSearchId?: number,
+      savedSearchVersion?: number
+    ): Promise<ScanResult> {
+      const scanJobId = this.generateScanJobId();
+      const searchTimestamp = new Date();
+      const discoveredUrls: string[] = [];
+      let errorCount = 0;
+      let itemsDiscovered = 0;
 
-    // If no keywords provided, get active keywords
-    const searchKeywords = keywords.length > 0 ? keywords : await this.getActiveKeywords();
+      // If no keywords provided, get active keywords
+      const searchKeywords = keywords.length > 0 ? keywords : await this.getActiveKeywords();
 
-    // Get tag names for search queries
-    const tagNames = await this.getTagNames(tagIds);
+      // Get tag names for search queries
+      const tagNames = await this.getTagNames(tagIds);
 
-    // Search for each keyword
-    for (const keyword of searchKeywords) {
-      try {
-        // Search with keyword and tag filters
-        const urls = await this.searchWithRetry(keyword, tagNames);
-        discoveredUrls.push(...urls);
+      // Search for each keyword
+      for (const keyword of searchKeywords) {
+        try {
+          // Search with keyword and tag filters
+          const urls = await this.searchWithRetry(keyword, tagNames);
+          discoveredUrls.push(...urls);
 
-        // Process discovered URLs if extractor is set
-        if (this.contentExtractor) {
-          for (const url of urls) {
-            try {
-              // Extract content from URL
-              const content = await this.contentExtractor.extract(url);
-              if (content) {
-                // Content extraction successful
-                // Note: Storage is handled by the extractor's internal pipeline
-                // or can be handled separately by the caller
+          // Process discovered URLs if extractor is set
+          if (this.contentExtractor) {
+            for (const url of urls) {
+              try {
+                // Extract content from URL
+                const content = await this.contentExtractor.extract(url);
+                if (content) {
+                  // Content extraction successful - increment items discovered
+                  itemsDiscovered++;
+                }
+              } catch (error) {
+                this.logError('executeScan', `Failed to extract ${url}`, error);
+                errorCount++;
               }
-            } catch (error) {
-              this.logError('executeScan', `Failed to extract ${url}`, error);
-              errorCount++;
             }
           }
+        } catch (error) {
+          // Log error but continue with remaining keywords (Requirement 1.8)
+          this.logError('executeScan', `Failed to search for keyword: ${keyword}`, error);
+          errorCount++;
         }
-      } catch (error) {
-        // Log error but continue with remaining keywords (Requirement 1.8)
-        this.logError('executeScan', `Failed to search for keyword: ${keyword}`, error);
-        errorCount++;
       }
+
+      // Record search history with items discovered count (Requirements 1.3, 1.4, 1.5, 1.7)
+      await this.storageService.recordSearchHistory(
+        scanJobId,
+        searchKeywords,
+        tagIds,
+        itemsDiscovered,
+        savedSearchId,
+        savedSearchVersion
+      );
+
+      return {
+        scanJobId,
+        discoveredUrls,
+        searchTimestamp,
+        keywordsUsed: searchKeywords,
+        selectedTagIds: tagIds,
+        errorCount,
+      };
     }
-
-    // Record search history
-    await this.storageService.recordSearchHistory(
-      scanJobId,
-      searchKeywords,
-      tagIds,
-      savedSearchId,
-      savedSearchVersion
-    );
-
-    return {
-      scanJobId,
-      discoveredUrls,
-      searchTimestamp,
-      keywordsUsed: searchKeywords,
-      selectedTagIds: tagIds,
-      errorCount,
-    };
-  }
 
   /**
    * Get tag names for the given tag IDs
