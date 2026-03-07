@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
-import { reviewQueueAPI, tagAPI } from '../services/api';
-import type { ContentItem, ContentType, TagGroup } from '../types';
+import { Filter, RefreshCcw, Shapes } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import ContentItemCard from '../components/ContentItemCard';
 import TagAssignmentModal from '../components/TagAssignmentModal';
+import { reviewQueueAPI, tagAPI } from '../services/api';
+import type { ContentItem, ContentType, TagGroup } from '../types';
+
+const contentTypes: Array<ContentType | 'all'> = ['all', 'event', 'person', 'theory', 'news'];
 
 const ReviewQueue = () => {
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
@@ -21,13 +24,11 @@ const ReviewQueue = () => {
     try {
       setLoading(true);
       setError(null);
-      
       const filters = selectedContentType !== 'all' ? { contentType: selectedContentType } : undefined;
       const [items, groups] = await Promise.all([
         reviewQueueAPI.getReviewQueue(filters),
         tagAPI.getTagGroups(),
       ]);
-      
       setContentItems(items);
       setTagGroups(groups);
     } catch (err) {
@@ -39,10 +40,9 @@ const ReviewQueue = () => {
 
   const handleApprove = async (contentId: number) => {
     if (!confirm('Are you sure you want to approve this content?')) return;
-    
     try {
       await reviewQueueAPI.approveContent(contentId);
-      setContentItems(items => items.filter(item => item.contentId !== contentId));
+      setContentItems((items) => items.filter((item) => item.contentId !== contentId));
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to approve content');
     }
@@ -50,10 +50,9 @@ const ReviewQueue = () => {
 
   const handleReject = async (contentId: number) => {
     if (!confirm('Are you sure you want to reject this content?')) return;
-    
     try {
       await reviewQueueAPI.rejectContent(contentId);
-      setContentItems(items => items.filter(item => item.contentId !== contentId));
+      setContentItems((items) => items.filter((item) => item.contentId !== contentId));
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to reject content');
     }
@@ -66,23 +65,19 @@ const ReviewQueue = () => {
 
   const handleTagsAssigned = async (tagIds: number[]) => {
     if (!selectedItem) return;
-    
+
     try {
       await reviewQueueAPI.assignTags(selectedItem.contentId, tagIds);
-      
-      // Update the item in the list with new tags
       const updatedGroups = await tagAPI.getTagGroups();
-      const allTags = updatedGroups.flatMap(g => g.tags);
-      const assignedTags = allTags.filter(t => tagIds.includes(t.tagId));
-      
-      setContentItems(items =>
-        items.map(item =>
-          item.contentId === selectedItem.contentId
-            ? { ...item, tags: assignedTags }
-            : item
-        )
+      const allTags = updatedGroups.flatMap((group) => group.tags);
+      const assignedTags = allTags.filter((tag) => tagIds.includes(tag.tagId));
+
+      setContentItems((items) =>
+        items.map((item) =>
+          item.contentId === selectedItem.contentId ? { ...item, tags: assignedTags } : item,
+        ),
       );
-      
+
       setShowTagModal(false);
       setSelectedItem(null);
     } catch (err) {
@@ -90,66 +85,75 @@ const ReviewQueue = () => {
     }
   };
 
-  const contentTypes: Array<ContentType | 'all'> = ['all', 'event', 'person', 'theory', 'news'];
-
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-[var(--teal-600)] border-t-transparent"></div>
-          <p className="text-[var(--ink-soft)]">Loading review queue...</p>
-        </div>
-      </div>
-    );
+    return <div className="ui-empty"><p>Loading review queue...</p></div>;
   }
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-        <p className="text-red-800">Error: {error}</p>
-        <button
-          onClick={loadData}
-          className="mt-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-        >
-          Retry
-        </button>
+      <div className="ui-note">
+        <div className="ui-panel-header">
+          <div>
+            <h3>Queue load failed</h3>
+            <p>{error}</p>
+          </div>
+          <button type="button" onClick={loadData} className="ui-button-secondary">
+            <RefreshCcw size={15} />
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="font-display text-3xl text-[var(--ink)]">Review Queue</h1>
-        <div className="flex items-center space-x-2">
-          <span className="text-sm text-[var(--ink-soft)]">Filter by type:</span>
-          <div className="flex space-x-1 rounded-lg border border-[var(--line)] bg-white p-1">
-            {contentTypes.map((type) => (
-              <button
-                key={type}
-                onClick={() => setSelectedContentType(type)}
-                className={`rounded-md px-3 py-1 text-sm font-medium capitalize transition ${
-                  selectedContentType === type
-                    ? 'bg-[var(--teal-600)] text-white'
-                    : 'text-[var(--ink-soft)] hover:bg-[var(--fog)]'
-                }`}
-              >
-                {type}
-              </button>
-            ))}
+    <div className="ui-stack">
+      <div className="page-header">
+        <div className="page-heading">
+          <span className="hero-badge">Moderation workflow</span>
+          <h1>Review queue</h1>
+          <p>Approve, reject, and enrich pending content before it becomes durable data.</p>
+        </div>
+        <button type="button" onClick={loadData} className="ui-button-secondary">
+          <RefreshCcw size={15} />
+          Refresh queue
+        </button>
+      </div>
+
+      <div className="ui-filter-bar">
+        <div className="ui-panel-header">
+          <div>
+            <h3>Filter pending records</h3>
+            <p>Review the full queue or narrow it to a specific content type.</p>
           </div>
+          <span className="ui-badge muted">
+            <Filter size={14} />
+            {contentItems.length} items visible
+          </span>
+        </div>
+        <div className="ui-pill-row">
+          {contentTypes.map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setSelectedContentType(type)}
+              className={`ghost-button small ${selectedContentType === type ? 'is-active' : ''}`}
+            >
+              {type}
+            </button>
+          ))}
         </div>
       </div>
 
       {contentItems.length === 0 ? (
-        <div className="rounded-lg border border-[var(--line)] bg-white/80 p-12 text-center">
-          <p className="text-lg text-[var(--ink-soft)]">
+        <div className="ui-empty">
+          <p>
             No pending content to review
-            {selectedContentType !== 'all' && ` for type "${selectedContentType}"`}
+            {selectedContentType !== 'all' && ` for type "${selectedContentType}"`}.
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="ui-stack">
           {contentItems.map((item) => (
             <ContentItemCard
               key={item.contentId}
@@ -173,6 +177,19 @@ const ReviewQueue = () => {
           onAssign={handleTagsAssigned}
         />
       )}
+
+      <div className="ui-note">
+        <div className="ui-panel-header">
+          <div>
+            <h3>Stored workflow</h3>
+            <p>This page is connected to the DB-backed review queue, not a mock case browser.</p>
+          </div>
+          <span className="ui-badge">
+            <Shapes size={14} />
+            Content triage
+          </span>
+        </div>
+      </div>
     </div>
   );
 };

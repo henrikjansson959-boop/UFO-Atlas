@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { tagAPI, savedSearchAPI, keywordAPI } from '../services/api';
-import type { TagGroup, Tag, SavedSearch, ScanResult, Keyword } from '../types';
+import { History, Play, Save, Search, Trash2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { keywordAPI, savedSearchAPI, tagAPI } from '../services/api';
+import type { Keyword, SavedSearch, ScanResult, Tag, TagGroup } from '../types';
 
 const SavedSearches = () => {
   const [tagGroups, setTagGroups] = useState<TagGroup[]>([]);
@@ -9,20 +10,14 @@ const SavedSearches = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  
-  // UI state
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
-  const [keywordInput, setKeywordInput] = useState<string>('');
-  const [searchNameInput, setSearchNameInput] = useState<string>('');
+  const [keywordInput, setKeywordInput] = useState('');
+  const [searchNameInput, setSearchNameInput] = useState('');
   const [executing, setExecuting] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
-  
-  // Version history state
   const [expandedVersions, setExpandedVersions] = useState<Set<string>>(new Set());
   const [versionHistory, setVersionHistory] = useState<Record<string, SavedSearch[]>>({});
-  
-  // Refinement state
   const [refiningSearch, setRefiningSearch] = useState<SavedSearch | null>(null);
 
   useEffect(() => {
@@ -38,13 +33,10 @@ const SavedSearches = () => {
         keywordAPI.getKeywords(),
         savedSearchAPI.getSavedSearches(),
       ]);
-      
       setTagGroups(tagGroupsData);
       setKeywords(keywordsData);
       setSavedSearches(savedSearchesData);
-      
-      // Expand all tag groups by default
-      setExpandedGroups(new Set(tagGroupsData.map(g => g.tagGroupId)));
+      setExpandedGroups(new Set(tagGroupsData.map((group) => group.tagGroupId)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
@@ -53,7 +45,7 @@ const SavedSearches = () => {
   };
 
   const toggleGroup = (groupId: number) => {
-    setExpandedGroups((prev: Set<number>) => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(groupId)) {
         next.delete(groupId);
@@ -65,7 +57,7 @@ const SavedSearches = () => {
   };
 
   const toggleTag = (tagId: number) => {
-    setSelectedTagIds((prev: Set<number>) => {
+    setSelectedTagIds((prev) => {
       const next = new Set(prev);
       if (next.has(tagId)) {
         next.delete(tagId);
@@ -76,6 +68,13 @@ const SavedSearches = () => {
     });
   };
 
+  const resetForm = () => {
+    setSearchNameInput('');
+    setKeywordInput('');
+    setSelectedTagIds(new Set());
+    setRefiningSearch(null);
+  };
+
   const handleSaveSearch = async () => {
     if (!searchNameInput.trim()) {
       setError('Please enter a search name');
@@ -84,8 +83,8 @@ const SavedSearches = () => {
 
     const keywordsArray = keywordInput
       .split(',')
-      .map((k: string) => k.trim())
-      .filter((k: string) => k.length > 0);
+      .map((keyword) => keyword.trim())
+      .filter((keyword) => keyword.length > 0);
 
     if (keywordsArray.length === 0) {
       setError('Please enter at least one keyword');
@@ -95,33 +94,21 @@ const SavedSearches = () => {
     try {
       setError(null);
       setSuccess(null);
-      
+
       if (refiningSearch) {
-        // Refine existing search
         await savedSearchAPI.refineSavedSearch(
           refiningSearch.savedSearchId,
           searchNameInput,
           keywordsArray,
-          Array.from(selectedTagIds)
+          Array.from(selectedTagIds),
         );
-        setSuccess(`Search "${searchNameInput}" refined successfully (new version created)`);
-        setRefiningSearch(null);
+        setSuccess(`Search "${searchNameInput}" refined successfully.`);
       } else {
-        // Create new search
-        await savedSearchAPI.createSavedSearch(
-          searchNameInput,
-          keywordsArray,
-          Array.from(selectedTagIds)
-        );
-        setSuccess(`Search "${searchNameInput}" saved successfully`);
+        await savedSearchAPI.createSavedSearch(searchNameInput, keywordsArray, Array.from(selectedTagIds));
+        setSuccess(`Search "${searchNameInput}" saved successfully.`);
       }
-      
-      // Reset form
-      setSearchNameInput('');
-      setKeywordInput('');
-      setSelectedTagIds(new Set());
-      
-      // Reload saved searches
+
+      resetForm();
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save search');
@@ -133,10 +120,9 @@ const SavedSearches = () => {
       setExecuting(true);
       setError(null);
       setScanResult(null);
-      
       const result = await savedSearchAPI.executeSavedSearch(search.savedSearchId);
       setScanResult(result);
-      setSuccess(`Search "${search.searchName}" executed successfully`);
+      setSuccess(`Search "${search.searchName}" executed successfully.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to execute search');
     } finally {
@@ -145,13 +131,10 @@ const SavedSearches = () => {
   };
 
   const handleRefineSearch = (search: SavedSearch) => {
-    // Load search configuration into form
     setRefiningSearch(search);
     setSearchNameInput(search.searchName);
     setKeywordInput(search.keywordsUsed.join(', '));
     setSelectedTagIds(new Set(search.selectedTagIds));
-    
-    // Scroll to form
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -163,7 +146,7 @@ const SavedSearches = () => {
     try {
       setError(null);
       await savedSearchAPI.deleteSavedSearch(searchId);
-      setSuccess(`Search "${searchName}" deleted successfully`);
+      setSuccess(`Search "${searchName}" deleted successfully.`);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete search');
@@ -179,7 +162,7 @@ const SavedSearches = () => {
   };
 
   const toggleVersionHistory = async (searchName: string) => {
-    setExpandedVersions((prev: Set<string>) => {
+    setExpandedVersions((prev) => {
       const next = new Set(prev);
       if (next.has(searchName)) {
         next.delete(searchName);
@@ -189,388 +172,225 @@ const SavedSearches = () => {
       return next;
     });
 
-    // Load version history if not already loaded
     if (!versionHistory[searchName]) {
       try {
         const versions = await savedSearchAPI.getVersionHistory(searchName);
-        setVersionHistory(prev => ({ ...prev, [searchName]: versions }));
+        setVersionHistory((prev) => ({ ...prev, [searchName]: versions }));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load version history');
       }
     }
   };
 
-  const getTagName = (tagId: number): string => {
+  const getTagName = (tagId: number) => {
     for (const group of tagGroups) {
-      const tag = group.tags.find((t: Tag) => t.tagId === tagId);
+      const tag = group.tags.find((entry: Tag) => entry.tagId === tagId);
       if (tag) return tag.tagName;
     }
+
     return `Tag ${tagId}`;
   };
 
-  // Group saved searches by name (latest version only for main list)
-  const latestSearches = savedSearches.reduce((acc: SavedSearch[], search: SavedSearch) => {
-    const existing = acc.find((s: SavedSearch) => s.searchName === search.searchName);
+  const latestSearches = savedSearches.reduce((acc: SavedSearch[], search) => {
+    const existing = acc.find((item) => item.searchName === search.searchName);
     if (!existing || search.version > existing.version) {
-      return [...acc.filter((s: SavedSearch) => s.searchName !== search.searchName), search];
+      return [...acc.filter((item) => item.searchName !== search.searchName), search];
     }
     return acc;
-  }, [] as SavedSearch[]);
+  }, []);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-[var(--teal-600)] border-t-transparent"></div>
-          <p className="text-[var(--ink-soft)]">Loading saved searches...</p>
-        </div>
-      </div>
-    );
+    return <div className="ui-empty"><p>Loading saved searches...</p></div>;
   }
 
   return (
-    <div>
-      <h1 className="mb-6 font-display text-3xl text-[var(--ink)]">Saved Search Management</h1>
-
-      {/* Error/Success Messages */}
-      {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
-          <p className="text-red-800">Error: {error}</p>
+    <div className="ui-stack">
+      <div className="page-header">
+        <div className="page-heading">
+          <span className="hero-badge">Reusable search recipes</span>
+          <h1>Saved searches</h1>
+          <p>Version search definitions, rerun them, and keep the search history tied to actual backend scans.</p>
         </div>
-      )}
+      </div>
 
-      {success && (
-        <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4">
-          <p className="text-green-800">{success}</p>
-        </div>
-      )}
+      {error && <div className="ui-note"><p>{error}</p></div>}
+      {success && <div className="ui-note"><p>{success}</p></div>}
 
-      {/* Scan Results */}
       {scanResult && (
-        <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-6">
-          <h2 className="mb-3 text-xl font-semibold text-green-900">Scan Completed</h2>
-          <div className="space-y-2 text-green-800">
-            <p><span className="font-medium">Scan Job ID:</span> {scanResult.scanJobId}</p>
-            <p><span className="font-medium">Items Discovered:</span> {scanResult.discoveredUrls.length}</p>
-            <p><span className="font-medium">Keywords Used:</span> {scanResult.keywordsUsed.join(', ') || 'None'}</p>
-            <p><span className="font-medium">Tags Selected:</span> {scanResult.selectedTagIds.length > 0 ? scanResult.selectedTagIds.join(', ') : 'All tags'}</p>
-            <p className="text-sm text-green-700">
-              Check the Review Queue to see discovered content items.
-            </p>
+        <div className="ui-panel">
+          <div className="ui-panel-header">
+            <div>
+              <h2>Execution complete</h2>
+              <p>The saved search was executed and the resulting items were added to the review pipeline.</p>
+            </div>
+            <span className="ui-badge success">{scanResult.discoveredUrls.length} discovered</span>
+          </div>
+          <div className="ui-pill-row">
+            <span className="ui-pill">Scan Job: {scanResult.scanJobId.slice(0, 8)}</span>
+            <span className="ui-pill">Keywords: {scanResult.keywordsUsed.join(', ') || 'None'}</span>
+            <span className="ui-pill">Tags: {scanResult.selectedTagIds.length > 0 ? scanResult.selectedTagIds.join(', ') : 'All tags'}</span>
           </div>
         </div>
       )}
 
-      {/* Search Configuration Form */}
-      <div className="mb-8 rounded-lg border border-[var(--line)] bg-white/80 p-6">
-        <div className="mb-4">
-          <h2 className="text-xl font-semibold text-[var(--ink)]">
-            {refiningSearch ? `Refine Search: ${refiningSearch.searchName} (v${refiningSearch.version})` : 'Create New Search'}
-          </h2>
-          <p className="mt-1 text-sm text-[var(--ink-soft)]">
-            {refiningSearch 
-              ? 'Modify the configuration below to create a new version of this search.'
-              : 'Configure keywords and tag filters, then save for reuse or execute once.'}
-          </p>
-        </div>
-
-        {refiningSearch && (
-          <div className="mb-4 rounded-lg bg-blue-50 border border-blue-200 p-3">
-            <p className="text-sm text-blue-800">
-              Refining will create version {refiningSearch.version + 1} with a link to the parent search.
-              <button
-                onClick={() => {
-                  setRefiningSearch(null);
-                  setSearchNameInput('');
-                  setKeywordInput('');
-                  setSelectedTagIds(new Set());
-                }}
-                className="ml-3 text-blue-600 hover:text-blue-700 font-medium"
-              >
-                Cancel refinement
-              </button>
-            </p>
-          </div>
-        )}
-
-        {/* Search Name Input */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-[var(--ink)] mb-2">
-            Search Name
-          </label>
-          <input
-            type="text"
-            value={searchNameInput}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchNameInput(e.target.value)}
-            placeholder="e.g., Roswell Incident Search"
-            className="w-full rounded-lg border border-[var(--line)] px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/20"
-          />
-        </div>
-
-        {/* Keywords Input */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-[var(--ink)] mb-2">
-            Keywords (comma-separated)
-          </label>
-          <input
-            type="text"
-            value={keywordInput}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setKeywordInput(e.target.value)}
-            placeholder="e.g., UFO, Roswell, alien"
-            className="w-full rounded-lg border border-[var(--line)] px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/20"
-          />
-          <p className="mt-1 text-xs text-[var(--ink-soft)]">
-            Active keywords from database: {keywords.filter((k: Keyword) => k.isActive).map((k: Keyword) => k.keywordText).join(', ') || 'None'}
-          </p>
-        </div>
-
-        {/* Tag Selection */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-[var(--ink)] mb-2">
-            Tag Filters
-          </label>
-          <p className="text-xs text-[var(--ink-soft)] mb-3">
-            Select specific tags to filter the scan, or leave all unchecked to scan all tags.
-          </p>
-
-          {selectedTagIds.size > 0 && (
-            <div className="mb-3 rounded-lg bg-[var(--fog)] p-3">
-              <p className="text-sm text-[var(--ink)]">
-                <span className="font-medium">{selectedTagIds.size}</span> tag{selectedTagIds.size !== 1 ? 's' : ''} selected
-                <button
-                  onClick={() => setSelectedTagIds(new Set())}
-                  className="ml-3 text-[var(--teal-600)] hover:text-[var(--teal-700)] text-sm font-medium"
-                >
-                  Clear all
-                </button>
-              </p>
+      <div className="ui-grid-2">
+        <section className="ui-panel">
+          <div className="ui-panel-header">
+            <div>
+              <h2>{refiningSearch ? `Refine ${refiningSearch.searchName} v${refiningSearch.version}` : 'Create or update a search'}</h2>
+              <p>{refiningSearch ? 'Save a new version from the selected parent search.' : 'Define keywords and tag filters for repeatable scans.'}</p>
             </div>
-          )}
+            {refiningSearch && (
+              <button type="button" className="ui-button-secondary" onClick={resetForm}>
+                Cancel refine
+              </button>
+            )}
+          </div>
 
-          {/* Tag Groups */}
-          <div className="space-y-2 max-h-96 overflow-y-auto border border-[var(--line)] rounded-lg">
-            {tagGroups.map((group: TagGroup) => (
-              <div key={group.tagGroupId} className="border-b border-[var(--line)] last:border-b-0">
+          <div className="ui-stack">
+            <div className="ui-field">
+              <label htmlFor="search-name">Search name</label>
+              <input id="search-name" type="text" value={searchNameInput} onChange={(event) => setSearchNameInput(event.target.value)} placeholder="Roswell cluster sweep" className="ui-input" />
+            </div>
+            <div className="ui-field">
+              <label htmlFor="search-keywords">Keywords (comma-separated)</label>
+              <input id="search-keywords" type="text" value={keywordInput} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setKeywordInput(event.target.value)} placeholder="ufo, roswell, witness" className="ui-input" />
+              <p className="helper-text">Active DB keywords: {keywords.filter((keyword) => keyword.isActive).map((keyword) => keyword.keywordText).join(', ') || 'None'}</p>
+            </div>
+            <div className="ui-actions">
+              <button type="button" onClick={handleSaveSearch} className="ui-button">
+                <Save size={15} />
+                {refiningSearch ? 'Save version' : 'Save search'}
+              </button>
+              {!refiningSearch && (
                 <button
-                  onClick={() => toggleGroup(group.tagGroupId)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-[var(--fog)] hover:bg-[var(--fog)]/70 transition"
+                  type="button"
+                  className="ui-button-secondary"
+                  onClick={() => setError('Execute Once requires a dedicated backend endpoint. Use Save + Execute for now.')}
                 >
-                  <div className="flex items-center space-x-2">
-                    <svg
-                      className={`h-4 w-4 text-[var(--ink-soft)] transition-transform ${
-                        expandedGroups.has(group.tagGroupId) ? 'rotate-90' : ''
-                      }`}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                    <span className="font-medium text-[var(--ink)]">{group.groupName}</span>
-                    <span className="text-xs text-[var(--ink-soft)]">({group.tags.length})</span>
-                  </div>
+                  Execute once
                 </button>
+              )}
+            </div>
+          </div>
+        </section>
 
+        <section className="ui-panel">
+          <div className="ui-panel-header">
+            <div>
+              <h2>Tag filters</h2>
+              <p>Select tags to narrow the search scope. No selection means all tags are eligible.</p>
+            </div>
+            {selectedTagIds.size > 0 && <span className="ui-badge">{selectedTagIds.size} selected</span>}
+          </div>
+
+          <div className="ui-stack" style={{ maxHeight: '32rem', overflowY: 'auto' }}>
+            {tagGroups.map((group) => (
+              <div key={group.tagGroupId} className="ui-table-panel">
+                <button type="button" onClick={() => toggleGroup(group.tagGroupId)} className="related-item">
+                  <span>{group.groupName}</span>
+                  <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} · {group.tags.length} tags</span>
+                </button>
                 {expandedGroups.has(group.tagGroupId) && (
-                  <div className="bg-white">
+                  <div className="ui-stack" style={{ padding: '16px' }}>
                     {group.tags.length === 0 ? (
-                      <div className="px-4 py-3 text-sm text-[var(--ink-soft)]">No tags in this group.</div>
+                      <p className="helper-text">No tags in this group.</p>
                     ) : (
-                      <div className="divide-y divide-[var(--line)]">
-                        {group.tags.map((tag: Tag) => (
-                          <label
-                            key={tag.tagId}
-                            className="flex items-center px-4 py-2 hover:bg-[var(--fog)]/30 cursor-pointer"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedTagIds.has(tag.tagId)}
-                              onChange={() => toggleTag(tag.tagId)}
-                              className="h-4 w-4 rounded border-[var(--line)] text-[var(--teal-600)] focus:ring-2 focus:ring-[var(--teal-600)]/20"
-                            />
-                            <span className="ml-2 text-sm text-[var(--ink)]">{tag.tagName}</span>
-                          </label>
-                        ))}
-                      </div>
+                      group.tags.map((tag) => (
+                        <label key={tag.tagId} className="related-item" style={{ cursor: 'pointer' }}>
+                          <span>
+                            <input type="checkbox" checked={selectedTagIds.has(tag.tagId)} onChange={() => toggleTag(tag.tagId)} style={{ marginRight: '10px' }} />
+                            {tag.tagName}
+                          </span>
+                          <span>{selectedTagIds.has(tag.tagId) ? 'Selected' : 'Available'}</span>
+                        </label>
+                      ))
                     )}
                   </div>
                 )}
               </div>
             ))}
           </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={handleSaveSearch}
-            className="rounded-lg bg-[var(--teal-600)] px-6 py-2 font-medium text-white hover:bg-[var(--teal-700)]"
-          >
-            {refiningSearch ? 'Save Refined Version' : 'Save Search'}
-          </button>
-          
-          {!refiningSearch && (
-            <button
-              onClick={() => {
-                // Execute once without saving - would need a separate API endpoint
-                setError('Execute Once feature requires backend implementation');
-              }}
-              className="rounded-lg border border-[var(--line)] bg-white px-6 py-2 font-medium text-[var(--ink)] hover:bg-[var(--fog)]"
-            >
-              Execute Once
-            </button>
-          )}
-        </div>
+        </section>
       </div>
 
-      {/* Saved Searches List */}
-      <div>
-        <h2 className="mb-4 text-2xl font-semibold text-[var(--ink)]">Saved Searches</h2>
-        
-        {latestSearches.length === 0 ? (
-          <div className="rounded-lg border border-[var(--line)] bg-white/80 p-12 text-center">
-            <p className="text-lg text-[var(--ink-soft)]">
-              No saved searches yet. Create one above to get started.
-            </p>
+      <section className="ui-panel">
+        <div className="ui-panel-header">
+          <div>
+            <h2>Saved search catalog</h2>
+            <p>Latest versions are shown first. Expand each search to see execution and lineage options.</p>
           </div>
+          <span className="ui-badge muted">{latestSearches.length} active definitions</span>
+        </div>
+
+        {latestSearches.length === 0 ? (
+          <div className="ui-empty"><p>No saved searches yet. Create one above to start building reusable queries.</p></div>
         ) : (
-          <div className="space-y-4">
-            {latestSearches.map((search: SavedSearch) => (
-              <div
-                key={search.savedSearchId}
-                className="rounded-lg border border-[var(--line)] bg-white/80 overflow-hidden"
-              >
-                {/* Search Header */}
-                <div className="px-6 py-4 bg-[var(--fog)]">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-[var(--ink)]">
-                        {search.searchName}
-                        <span className="ml-2 text-sm font-normal text-[var(--ink-soft)]">
-                          v{search.version}
-                        </span>
-                      </h3>
-                      <p className="mt-1 text-sm text-[var(--ink-soft)]">
-                        Created {new Date(search.createdAt).toLocaleDateString()} by {search.createdBy}
-                      </p>
-                    </div>
-                    
-                    {/* Action Buttons */}
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => handleExecuteSearch(search)}
-                        disabled={executing}
-                        className="rounded-lg bg-[var(--teal-600)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--teal-700)] disabled:opacity-50"
-                      >
-                        Execute
-                      </button>
-                      <button
-                        onClick={() => handleRefineSearch(search)}
-                        className="rounded-lg border border-[var(--line)] bg-white px-4 py-2 text-sm font-medium text-[var(--ink)] hover:bg-[var(--fog)]"
-                      >
-                        Refine
-                      </button>
-                      <button
-                        onClick={() => handleLoadSearch(search)}
-                        className="rounded-lg border border-[var(--line)] bg-white px-4 py-2 text-sm font-medium text-[var(--ink)] hover:bg-[var(--fog)]"
-                      >
-                        Load
-                      </button>
-                      <button
-                        onClick={() => handleDeleteSearch(search.savedSearchId, search.searchName)}
-                        className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-                      >
-                        Delete
-                      </button>
-                    </div>
+          <div className="ui-stack">
+            {latestSearches.map((search) => (
+              <article key={search.savedSearchId} className="entry-card">
+                <div className="entry-heading">
+                  <div className="entry-heading-main">
+                    <span className="entry-date">Versioned search</span>
+                    <h3 className="entry-title" style={{ maxWidth: '16ch' }}>{search.searchName}</h3>
                   </div>
+                  <span className="ui-badge">v{search.version}</span>
                 </div>
-
-                {/* Search Details */}
-                <div className="px-6 py-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-[var(--ink-soft)] mb-1">Keywords</p>
-                      <p className="text-sm text-[var(--ink)]">
-                        {search.keywordsUsed.join(', ') || 'None'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-[var(--ink-soft)] mb-1">Tag Filters</p>
-                      <p className="text-sm text-[var(--ink)]">
-                        {search.selectedTagIds.length > 0 
-                          ? search.selectedTagIds.map(id => getTagName(id)).join(', ')
-                          : 'All tags'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Version History Toggle */}
-                  <button
-                    onClick={() => toggleVersionHistory(search.searchName)}
-                    className="mt-4 flex items-center text-sm text-[var(--teal-600)] hover:text-[var(--teal-700)] font-medium"
-                  >
-                    <svg
-                      className={`h-4 w-4 mr-1 transition-transform ${
-                        expandedVersions.has(search.searchName) ? 'rotate-90' : ''
-                      }`}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                    View Version History
+                <p className="entry-line">Created {new Date(search.createdAt).toLocaleString()} by {search.createdBy}</p>
+                <div className="entry-meta">
+                  <span>Keywords: {search.keywordsUsed.join(', ') || 'None'}</span>
+                  <span>Tags: {search.selectedTagIds.length > 0 ? search.selectedTagIds.map((id) => getTagName(id)).join(', ') : 'All tags'}</span>
+                </div>
+                <div className="ui-actions" style={{ marginTop: '16px' }}>
+                  <button type="button" onClick={() => handleExecuteSearch(search)} disabled={executing} className="ui-button">
+                    <Play size={15} />
+                    Execute
                   </button>
-
-                  {/* Version History */}
-                  {expandedVersions.has(search.searchName) && versionHistory[search.searchName] && (
-                    <div className="mt-4 border-t border-[var(--line)] pt-4">
-                      <h4 className="text-sm font-semibold text-[var(--ink)] mb-3">Version History</h4>
-                      <div className="space-y-2">
-                        {versionHistory[search.searchName]
-                          .sort((a: SavedSearch, b: SavedSearch) => b.version - a.version)
-                          .map((version: SavedSearch) => (
-                            <div
-                              key={version.savedSearchId}
-                              className="flex items-center justify-between rounded-lg border border-[var(--line)] bg-[var(--fog)]/30 px-4 py-2"
-                            >
-                              <div className="flex-1">
-                                <p className="text-sm font-medium text-[var(--ink)]">
-                                  Version {version.version}
-                                  {version.version === search.version && (
-                                    <span className="ml-2 text-xs text-[var(--teal-600)]">(Current)</span>
-                                  )}
-                                </p>
-                                <p className="text-xs text-[var(--ink-soft)]">
-                                  {new Date(version.createdAt).toLocaleString()} by {version.createdBy}
-                                </p>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <button
-                                  onClick={() => handleLoadSearch(version)}
-                                  className="text-sm text-[var(--teal-600)] hover:text-[var(--teal-700)] font-medium"
-                                >
-                                  Load
-                                </button>
-                                <button
-                                  onClick={() => handleExecuteSearch(version)}
-                                  disabled={executing}
-                                  className="text-sm text-[var(--teal-600)] hover:text-[var(--teal-700)] font-medium disabled:opacity-50"
-                                >
-                                  Execute
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
+                  <button type="button" onClick={() => handleRefineSearch(search)} className="ui-button-secondary">Refine</button>
+                  <button type="button" onClick={() => handleLoadSearch(search)} className="ui-button-secondary">Load</button>
+                  <button type="button" onClick={() => handleDeleteSearch(search.savedSearchId, search.searchName)} className="ui-button-danger">
+                    <Trash2 size={15} />
+                    Delete
+                  </button>
+                  <button type="button" onClick={() => toggleVersionHistory(search.searchName)} className="ui-button-secondary">
+                    <History size={15} />
+                    {expandedVersions.has(search.searchName) ? 'Hide versions' : 'View versions'}
+                  </button>
                 </div>
-              </div>
+
+                {expandedVersions.has(search.searchName) && versionHistory[search.searchName] && (
+                  <div className="ui-stack" style={{ marginTop: '18px' }}>
+                    {versionHistory[search.searchName]
+                      .sort((a, b) => b.version - a.version)
+                      .map((version) => (
+                        <div key={version.savedSearchId} className="related-item">
+                          <span>
+                            {version.searchName} v{version.version} · {new Date(version.createdAt).toLocaleString()}
+                          </span>
+                          <span>
+                            <button type="button" onClick={() => handleLoadSearch(version)} className="ui-inline-button">Load</button>
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </article>
             ))}
           </div>
         )}
+      </section>
+
+      <div className="ui-note">
+        <div className="ui-panel-header">
+          <div>
+            <h3>Search execution path</h3>
+            <p>Saved searches call the backend execute endpoint and produce real scan results that feed the review queue.</p>
+          </div>
+          <span className="ui-badge">
+            <Search size={14} />
+            Backend connected
+          </span>
+        </div>
       </div>
     </div>
   );

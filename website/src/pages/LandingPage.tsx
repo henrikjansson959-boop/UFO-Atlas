@@ -1,99 +1,181 @@
+import { ArrowRight, BookOpen, Database, History, Moon, Radar, Search, ShieldCheck, Sun, Tags } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useTheme } from '../components/ThemeContext';
+
+const quickLinks = [
+  {
+    title: 'Search And Fetch',
+    text: 'Run a scan with active keywords and tag filters, then send the discovered records into the review queue.',
+    to: '/admin/scan',
+    icon: Radar,
+  },
+  {
+    title: 'Review Stored Items',
+    text: 'Approve, reject, and assign tags before records move deeper into the dataset.',
+    to: '/admin/review-queue',
+    icon: ShieldCheck,
+  },
+  {
+    title: 'Saved Searches',
+    text: 'Store repeatable search recipes, version them, and rerun them against the current data source.',
+    to: '/admin/saved-searches',
+    icon: Search,
+  },
+];
+
+const landingStats = [
+  { label: 'Data Source', value: 'Supabase', icon: Database },
+  { label: 'Search Controls', value: 'Keywords + Tags', icon: Tags },
+  { label: 'Audit Trail', value: 'History + Logs', icon: History },
+];
 
 const LandingPage = () => {
+  const { theme, toggleTheme } = useTheme();
+
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-[var(--sky)] text-[var(--ink)]">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="animate-float-slow absolute -left-16 top-16 h-64 w-64 rounded-full bg-[radial-gradient(circle,_rgba(246,167,82,0.35),_transparent_70%)] blur-xl" />
-        <div className="animate-float-medium absolute right-0 top-32 h-80 w-80 rounded-full bg-[radial-gradient(circle,_rgba(76,164,140,0.35),_transparent_70%)] blur-xl" />
-        <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-[radial-gradient(circle,_rgba(31,103,122,0.2),_transparent_70%)] blur-xl" />
-      </div>
-
-      <main className="relative mx-auto flex w-full max-w-6xl flex-col px-5 pb-16 pt-8 sm:px-8 lg:px-10">
-        <header className="mb-14 flex items-center justify-between rounded-full border border-[var(--line)] bg-white/70 px-5 py-3 backdrop-blur">
-          <p className="font-display text-lg tracking-wide">UFO Atlas</p>
-          <div className="flex space-x-3">
-            <Link
-              to="/admin"
-              className="rounded-full border border-[var(--line)] bg-[var(--fog)] px-4 py-2 text-sm font-semibold transition hover:-translate-y-0.5 hover:bg-white"
-            >
-              Admin
-            </Link>
-            <button className="rounded-full border border-[var(--line)] bg-[var(--fog)] px-4 py-2 text-sm font-semibold transition hover:-translate-y-0.5 hover:bg-white">
-              Join Updates
-            </button>
+    <div className="shell landing-shell">
+      <header className="topbar topbar-panel">
+        <Link to="/" className="brand">
+          <div className="brand-mark">
+            <img src="/ufo-atlas-logo-cropped.png" alt="UFO Atlas logo" className="brand-logo" />
           </div>
-        </header>
-
-        <section className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
           <div>
-            <p className="mb-4 inline-flex rounded-full border border-[var(--line)] bg-white/75 px-4 py-1 text-sm font-medium text-[var(--teal-700)]">
-              New Exploration Web Experience
-            </p>
-            <h1 className="font-display text-5xl leading-tight sm:text-6xl">
-              Discover strange sightings with style, speed, and story.
-            </h1>
-            <p className="mt-5 max-w-xl text-lg text-[var(--ink-soft)]">
-              UFO Atlas tracks reports, patterns, and places in one cinematic dashboard built for curious minds.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <button className="rounded-full bg-[var(--teal-700)] px-6 py-3 text-sm font-semibold text-[var(--sand)] transition hover:-translate-y-0.5 hover:bg-[var(--teal-800)]">
-                Launch Beta
-              </button>
-              <button className="rounded-full border border-[var(--line)] bg-white/80 px-6 py-3 text-sm font-semibold transition hover:-translate-y-0.5 hover:bg-white">
-                View Roadmap
-              </button>
+            <p className="brand-title">UFO Atlas</p>
+            <p className="brand-sub">Automated Data Collection</p>
+          </div>
+        </Link>
+        <div className="header-actions">
+          <Link to="/admin/review-queue" className="ghost-button small">
+            <BookOpen size={15} />
+            Admin Console
+          </Link>
+          <button type="button" className="icon-button" onClick={toggleTheme} aria-label="Toggle theme">
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+        </div>
+      </header>
+
+      <section className="hero-grid">
+        <article className="card-panel hero-copy">
+          <span className="hero-badge">Phase 1 Admin Interface</span>
+          <p className="eyebrow">Live collection workflow</p>
+          <h1 className="hero-title">Search, fetch, review, and store findings in one UI.</h1>
+          <p className="hero-sub">
+            This app is the real operational surface for the repo requirements. Trigger scans, inspect discovered items,
+            assign tags, and keep a usable audit trail without leaving the app.
+          </p>
+          <div className="cta-row">
+            <Link to="/admin/scan" className="primary-button">
+              <Radar size={16} />
+              Search And Fetch
+            </Link>
+            <Link to="/admin/review-queue" className="ghost-button">
+              <ShieldCheck size={16} />
+              Review Stored Items
+            </Link>
+          </div>
+          <div className="metric-grid">
+            {landingStats.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.label} className="metric-card">
+                  <span className="metric-label">{item.label}</span>
+                  <strong className="metric-value">{item.value}</strong>
+                  <div className="metric-icon">
+                    <Icon size={15} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </article>
+
+        <aside className="card-panel hero-side">
+          <div className="side-header">
+            <div>
+              <p className="eyebrow compact">Workflow map</p>
+              <h2>Current capabilities</h2>
+            </div>
+            <span className="radar-chip">Repo-backed</span>
+          </div>
+
+          <div className="signal-stack">
+            {quickLinks.map((item, index) => {
+              const Icon = item.icon;
+              return (
+                <Link to={item.to} key={item.title} className="signal-card">
+                  <div className="signal-topline">
+                    <span className="signal-index">0{index + 1}</span>
+                    <span className={`signal-pill ${index === 0 ? 'signal-high' : 'signal-medium'}`}>
+                      Active route
+                    </span>
+                  </div>
+                  <p>{item.title}</p>
+                  <span className="signal-meta">
+                    <Icon size={14} />
+                    {item.text}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </aside>
+      </section>
+
+      <section className="workspace-grid">
+        <article className="card-panel content-panel">
+          <div className="content-header">
+            <div>
+              <p className="eyebrow compact">Execution path</p>
+              <h2>Admin routes that hit the backend</h2>
+            </div>
+            <Link to="/admin/saved-searches" className="results-chip">
+              Search recipes available
+            </Link>
+          </div>
+
+          <div className="entry-list landing-feature-list">
+            {quickLinks.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link to={item.to} key={item.title} className="entry-card landing-entry-card">
+                  <div className="entry-heading">
+                    <div className="entry-heading-main">
+                      <span className="entry-date">
+                        <Icon size={14} />
+                        Connected route
+                      </span>
+                      <h3 className="entry-title landing-entry-title">{item.title}</h3>
+                    </div>
+                    <ArrowRight size={18} />
+                  </div>
+                  <p className="entry-line">{item.text}</p>
+                </Link>
+              );
+            })}
+          </div>
+        </article>
+
+        <aside className="card-panel sidebar-panel">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow compact">Guardrail</p>
+              <h2>One app root</h2>
             </div>
           </div>
-
-          <div className="relative rounded-[28px] border border-[var(--line)] bg-[linear-gradient(135deg,_rgba(255,255,255,0.85),_rgba(235,244,248,0.8))] p-6 shadow-[0_25px_70px_rgba(22,43,56,0.12)]">
-            <p className="mb-5 text-sm font-semibold uppercase tracking-[0.24em] text-[var(--teal-600)]">
-              Live Signals
-            </p>
-            <ul className="space-y-4">
-              {[
-                ['North Coast', '14 sightings this week'],
-                ['Mountain Corridor', '9 unusual trajectories'],
-                ['Open Ocean', '5 cross-radar anomalies'],
-              ].map(([zone, note], index) => (
-                <li
-                  className="animate-rise rounded-2xl border border-[var(--line)] bg-white/70 p-4"
-                  style={{ animationDelay: `${index * 110}ms` }}
-                  key={zone}
-                >
-                  <p className="font-semibold">{zone}</p>
-                  <p className="text-sm text-[var(--ink-soft)]">{note}</p>
-                </li>
-              ))}
-            </ul>
+          <p className="hero-sub sidebar-copy-text">
+            The canonical frontend now stays on the TypeScript routed app. Visual improvements belong here, not in a
+            separate root UI.
+          </p>
+          <div className="tag-list">
+            <span className="case-tag">/admin/scan</span>
+            <span className="case-tag">/admin/review-queue</span>
+            <span className="case-tag">/admin/saved-searches</span>
+            <span className="case-tag">/admin/history</span>
+            <span className="case-tag">/admin/logs</span>
           </div>
-        </section>
-
-        <section className="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            {
-              title: 'Smart Timeline',
-              text: 'Filter reports by shape, speed, time, and confidence in one flowing interface.',
-            },
-            {
-              title: 'Map Intelligence',
-              text: 'Heat zones reveal when and where activity spikes without clutter or noise.',
-            },
-            {
-              title: 'Case Profiles',
-              text: 'Each case combines witness notes, media, and metadata for fast comparisons.',
-            },
-          ].map((item) => (
-            <article
-              key={item.title}
-              className="rounded-3xl border border-[var(--line)] bg-white/80 p-6 backdrop-blur transition hover:-translate-y-1"
-            >
-              <h2 className="font-display text-2xl">{item.title}</h2>
-              <p className="mt-2 text-[var(--ink-soft)]">{item.text}</p>
-            </article>
-          ))}
-        </section>
-      </main>
+        </aside>
+      </section>
     </div>
   );
 };

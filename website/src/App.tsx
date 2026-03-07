@@ -1,34 +1,37 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import AdminLayout from './components/AdminLayout';
-import ReviewQueue from './pages/ReviewQueue';
-import KeywordManagement from './pages/KeywordManagement';
-import TagManagement from './pages/TagManagement';
-import ScanTrigger from './pages/ScanTrigger';
-import SavedSearches from './pages/SavedSearches';
-import SearchHistory from './pages/SearchHistory';
+import { ThemeProvider } from './components/ThemeContext';
 import ErrorLogs from './pages/ErrorLogs';
+import KeywordManagement from './pages/KeywordManagement';
 import LandingPage from './pages/LandingPage';
+import ReviewQueue from './pages/ReviewQueue';
+import SavedSearches from './pages/SavedSearches';
+import ScanTrigger from './pages/ScanTrigger';
+import SearchHistory from './pages/SearchHistory';
+import TagManagement from './pages/TagManagement';
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Landing Page */}
-        <Route path="/" element={<LandingPage />} />
-        
-        {/* Admin Routes */}
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<Navigate to="/admin/review-queue" replace />} />
-          <Route path="review-queue" element={<ReviewQueue />} />
-          <Route path="keywords" element={<KeywordManagement />} />
-          <Route path="tags" element={<TagManagement />} />
-          <Route path="scan" element={<ScanTrigger />} />
-          <Route path="saved-searches" element={<SavedSearches />} />
-          <Route path="history" element={<SearchHistory />} />
-          <Route path="logs" element={<ErrorLogs />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <ThemeProvider>
+      <div className="app">
+        <div className="site-background" />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<Navigate to="/admin/review-queue" replace />} />
+              <Route path="review-queue" element={<ReviewQueue />} />
+              <Route path="keywords" element={<KeywordManagement />} />
+              <Route path="tags" element={<TagManagement />} />
+              <Route path="scan" element={<ScanTrigger />} />
+              <Route path="saved-searches" element={<SavedSearches />} />
+              <Route path="history" element={<SearchHistory />} />
+              <Route path="logs" element={<ErrorLogs />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </div>
+    </ThemeProvider>
   );
 }
 

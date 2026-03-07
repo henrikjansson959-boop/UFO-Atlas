@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { FolderPlus, Pencil, RefreshCcw, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { tagAPI } from '../services/api';
-import type { TagGroup, Tag } from '../types';
+import type { Tag, TagGroup } from '../types';
 
 const TagManagement = () => {
   const [tagGroups, setTagGroups] = useState<TagGroup[]>([]);
@@ -22,9 +23,7 @@ const TagManagement = () => {
       setError(null);
       const data = await tagAPI.getTagGroups();
       setTagGroups(data);
-      
-      // Expand all groups by default
-      setExpandedGroups(new Set(data.map(g => g.tagGroupId)));
+      setExpandedGroups(new Set(data.map((group) => group.tagGroupId)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tag groups');
     } finally {
@@ -33,7 +32,7 @@ const TagManagement = () => {
   };
 
   const toggleGroup = (groupId: number) => {
-    setExpandedGroups(prev => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(groupId)) {
         next.delete(groupId);
@@ -44,14 +43,12 @@ const TagManagement = () => {
     });
   };
 
-  const handleAddTag = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const handleAddTag = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!newTagName.trim()) {
       alert('Please enter a tag name');
       return;
     }
-
     if (!selectedGroupId) {
       alert('Please select a tag group');
       return;
@@ -98,181 +95,103 @@ const TagManagement = () => {
     }
   };
 
-  const startEditingTag = (tag: Tag) => {
-    setEditingTag({ tagId: tag.tagId, tagName: tag.tagName });
-  };
-
-  const cancelEditing = () => {
-    setEditingTag(null);
-  };
-
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-[var(--teal-600)] border-t-transparent"></div>
-          <p className="text-[var(--ink-soft)]">Loading tag groups...</p>
-        </div>
-      </div>
-    );
+    return <div className="ui-empty"><p>Loading tag groups...</p></div>;
   }
 
   if (error) {
-    return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-        <p className="text-red-800">Error: {error}</p>
-        <button
-          onClick={loadTagGroups}
-          className="mt-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-        >
-          Retry
-        </button>
-      </div>
-    );
+    return <div className="ui-note"><p>{error}</p></div>;
   }
 
   return (
-    <div>
-      <h1 className="mb-6 font-display text-3xl text-[var(--ink)]">Tag Management</h1>
-
-      {/* Add Tag Form */}
-      <div className="mb-6 rounded-lg border border-[var(--line)] bg-white/80 p-6">
-        <h2 className="mb-4 text-xl font-semibold text-[var(--ink)]">Add New Tag</h2>
-        <form onSubmit={handleAddTag} className="flex space-x-3">
-          <input
-            type="text"
-            value={newTagName}
-            onChange={(e) => setNewTagName(e.target.value)}
-            placeholder="Enter tag name (e.g., Jesse Marcel)"
-            className="flex-1 rounded-lg border border-[var(--line)] px-4 py-2 text-[var(--ink)] placeholder-[var(--ink-soft)] focus:border-[var(--teal-600)] focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/20"
-            disabled={addingTag}
-          />
-          <select
-            value={selectedGroupId || ''}
-            onChange={(e) => setSelectedGroupId(Number(e.target.value))}
-            className="rounded-lg border border-[var(--line)] px-4 py-2 text-[var(--ink)] focus:border-[var(--teal-600)] focus:outline-none focus:ring-2 focus:ring-[var(--teal-600)]/20"
-            disabled={addingTag}
-          >
-            <option value="">Select Tag Group</option>
-            {tagGroups.map((group) => (
-              <option key={group.tagGroupId} value={group.tagGroupId}>
-                {group.groupName}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            disabled={addingTag}
-            className="rounded-lg bg-[var(--teal-600)] px-6 py-2 font-medium text-white hover:bg-[var(--teal-700)] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {addingTag ? 'Adding...' : 'Add Tag'}
-          </button>
-        </form>
+    <div className="ui-stack">
+      <div className="page-header">
+        <div className="page-heading">
+          <span className="hero-badge">Classification controls</span>
+          <h1>Tag management</h1>
+          <p>Create and maintain the tag vocabulary used by scans, reviews, and saved searches.</p>
+        </div>
+        <button type="button" onClick={loadTagGroups} className="ui-button-secondary">
+          <RefreshCcw size={15} />
+          Refresh
+        </button>
       </div>
 
-      {/* Tag Groups List */}
-      {tagGroups.length === 0 ? (
-        <div className="rounded-lg border border-[var(--line)] bg-white/80 p-12 text-center">
-          <p className="text-lg text-[var(--ink-soft)]">
-            No tag groups found. Please configure tag groups in the database.
-          </p>
+      <section className="ui-panel">
+        <div className="ui-panel-header">
+          <div>
+            <h2>Add tag</h2>
+            <p>Choose a group and create a new assignable tag.</p>
+          </div>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {tagGroups.map((group) => (
-            <div
-              key={group.tagGroupId}
-              className="rounded-lg border border-[var(--line)] bg-white/80 overflow-hidden"
-            >
-              {/* Group Header */}
-              <button
-                onClick={() => toggleGroup(group.tagGroupId)}
-                className="w-full flex items-center justify-between px-6 py-4 bg-[var(--fog)] hover:bg-[var(--fog)]/70 transition"
-              >
-                <div className="flex items-center space-x-3">
-                  <svg
-                    className={`h-5 w-5 text-[var(--ink-soft)] transition-transform ${
-                      expandedGroups.has(group.tagGroupId) ? 'rotate-90' : ''
-                    }`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                  <h3 className="text-lg font-semibold text-[var(--ink)]">{group.groupName}</h3>
-                  <span className="text-sm text-[var(--ink-soft)]">
-                    ({group.tags.length} {group.tags.length === 1 ? 'tag' : 'tags'})
-                  </span>
-                </div>
-              </button>
+        <form onSubmit={handleAddTag} className="ui-actions">
+          <input type="text" value={newTagName} onChange={(event) => setNewTagName(event.target.value)} placeholder="Jesse Marcel" className="ui-input" style={{ flex: 1 }} disabled={addingTag} />
+          <select value={selectedGroupId || ''} onChange={(event) => setSelectedGroupId(Number(event.target.value))} className="ui-select" disabled={addingTag} style={{ minWidth: '15rem' }}>
+            <option value="">Select tag group</option>
+            {tagGroups.map((group) => (
+              <option key={group.tagGroupId} value={group.tagGroupId}>{group.groupName}</option>
+            ))}
+          </select>
+          <button type="submit" disabled={addingTag} className="ui-button">
+            <FolderPlus size={15} />
+            {addingTag ? 'Adding...' : 'Add tag'}
+          </button>
+        </form>
+      </section>
 
-              {/* Tags List */}
+      {tagGroups.length === 0 ? (
+        <div className="ui-empty"><p>No tag groups found.</p></div>
+      ) : (
+        <div className="ui-stack">
+          {tagGroups.map((group) => (
+            <section key={group.tagGroupId} className="ui-table-panel">
+              <button type="button" onClick={() => toggleGroup(group.tagGroupId)} className="related-item">
+                <span>{group.groupName}</span>
+                <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} · {group.tags.length} tags</span>
+              </button>
               {expandedGroups.has(group.tagGroupId) && (
-                <div className="border-t border-[var(--line)]">
+                <div className="ui-stack" style={{ padding: '16px' }}>
                   {group.tags.length === 0 ? (
-                    <div className="px-6 py-8 text-center text-[var(--ink-soft)]">
-                      No tags in this group. Add one above.
-                    </div>
+                    <p className="helper-text">No tags in this group yet.</p>
                   ) : (
-                    <div className="divide-y divide-[var(--line)]">
-                      {group.tags.map((tag) => (
-                        <div
-                          key={tag.tagId}
-                          className="px-6 py-3 flex items-center justify-between hover:bg-[var(--fog)]/30"
-                        >
-                          {editingTag?.tagId === tag.tagId ? (
-                            // Edit Mode
-                            <div className="flex items-center space-x-2 flex-1">
-                              <input
-                                type="text"
-                                value={editingTag.tagName}
-                                onChange={(e) =>
-                                  setEditingTag({ ...editingTag, tagName: e.target.value })
-                                }
-                                className="flex-1 rounded border border-[var(--line)] px-3 py-1 text-[var(--ink)] focus:border-[var(--teal-600)] focus:outline-none focus:ring-1 focus:ring-[var(--teal-600)]/20"
-                                autoFocus
-                              />
-                              <button
-                                onClick={() => handleEditTag(editingTag.tagId, editingTag.tagName)}
-                                className="rounded bg-[var(--teal-600)] px-3 py-1 text-sm font-medium text-white hover:bg-[var(--teal-700)]"
-                              >
-                                Save
+                    group.tags.map((tag: Tag) => (
+                      <div key={tag.tagId} className="related-item">
+                        {editingTag?.tagId === tag.tagId ? (
+                          <>
+                            <input
+                              type="text"
+                              value={editingTag.tagName}
+                              onChange={(event) => setEditingTag({ ...editingTag, tagName: event.target.value })}
+                              className="ui-input"
+                              style={{ flex: 1 }}
+                              autoFocus
+                            />
+                            <span className="ui-actions">
+                              <button type="button" onClick={() => handleEditTag(editingTag.tagId, editingTag.tagName)} className="ui-button">Save</button>
+                              <button type="button" onClick={() => setEditingTag(null)} className="ui-button-secondary">Cancel</button>
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span>{tag.tagName}</span>
+                            <span className="ui-actions">
+                              <button type="button" onClick={() => setEditingTag({ tagId: tag.tagId, tagName: tag.tagName })} className="ui-button-secondary">
+                                <Pencil size={15} />
+                                Edit
                               </button>
-                              <button
-                                onClick={cancelEditing}
-                                className="rounded bg-gray-200 px-3 py-1 text-sm font-medium text-gray-800 hover:bg-gray-300"
-                              >
-                                Cancel
+                              <button type="button" onClick={() => handleDeleteTag(tag.tagId, tag.tagName)} className="ui-button-danger">
+                                <Trash2 size={15} />
+                                Delete
                               </button>
-                            </div>
-                          ) : (
-                            // View Mode
-                            <>
-                              <span className="text-[var(--ink)]">{tag.tagName}</span>
-                              <div className="flex items-center space-x-2">
-                                <button
-                                  onClick={() => startEditingTag(tag)}
-                                  className="rounded bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800 hover:bg-blue-200"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteTag(tag.tagId, tag.tagName)}
-                                  className="rounded bg-red-100 px-3 py-1 text-sm font-medium text-red-800 hover:bg-red-200"
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    ))
                   )}
                 </div>
               )}
-            </div>
+            </section>
           ))}
         </div>
       )}

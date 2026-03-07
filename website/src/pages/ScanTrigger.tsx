@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import { tagAPI, scanAPI } from '../services/api';
-import type { TagGroup, Tag, ScanResult } from '../types';
+import { Radar, RefreshCcw, Search } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { scanAPI, tagAPI } from '../services/api';
+import type { ScanResult, Tag, TagGroup } from '../types';
 
 const ScanTrigger = () => {
   const [tagGroups, setTagGroups] = useState<TagGroup[]>([]);
@@ -21,9 +22,7 @@ const ScanTrigger = () => {
       setError(null);
       const data = await tagAPI.getTagGroups();
       setTagGroups(data);
-      
-      // Expand all groups by default
-      setExpandedGroups(new Set(data.map(g => g.tagGroupId)));
+      setExpandedGroups(new Set(data.map((group) => group.tagGroupId)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tag groups');
     } finally {
@@ -32,7 +31,7 @@ const ScanTrigger = () => {
   };
 
   const toggleGroup = (groupId: number) => {
-    setExpandedGroups((prev: Set<number>) => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(groupId)) {
         next.delete(groupId);
@@ -44,7 +43,7 @@ const ScanTrigger = () => {
   };
 
   const toggleTag = (tagId: number) => {
-    setSelectedTagIds((prev: Set<number>) => {
+    setSelectedTagIds((prev) => {
       const next = new Set(prev);
       if (next.has(tagId)) {
         next.delete(tagId);
@@ -60,12 +59,7 @@ const ScanTrigger = () => {
       setScanning(true);
       setError(null);
       setScanResult(null);
-      
-      // Convert Set to Array for API call
-      // Empty array means "all tags" per requirements 8.4
-      const tagIdsArray: number[] = Array.from(selectedTagIds);
-      
-      const result = await scanAPI.triggerScan(tagIdsArray);
+      const result = await scanAPI.triggerScan(Array.from(selectedTagIds));
       setScanResult(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to trigger scan');
@@ -76,143 +70,138 @@ const ScanTrigger = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-[var(--teal-600)] border-t-transparent"></div>
-          <p className="text-[var(--ink-soft)]">Loading tag groups...</p>
-        </div>
+      <div className="ui-empty">
+        <p>Loading tag groups...</p>
       </div>
     );
   }
 
   return (
-    <div>
-      <h1 className="mb-6 font-display text-3xl text-[var(--ink)]">Manual Scan Trigger</h1>
-
-      {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
-          <p className="text-red-800">Error: {error}</p>
+    <div className="ui-stack">
+      <div className="page-header">
+        <div className="page-heading">
+          <span className="hero-badge">Live fetch control</span>
+          <h1>Manual scan trigger</h1>
+          <p>Select tags, run the collector, and push new discoveries into the review queue.</p>
         </div>
-      )}
-
-      {/* Scan Results */}
-      {scanResult && (
-        <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-6">
-          <h2 className="mb-3 text-xl font-semibold text-green-900">Scan Completed</h2>
-          <div className="space-y-2 text-green-800">
-            <p><span className="font-medium">Scan Job ID:</span> {scanResult.scanJobId}</p>
-            <p><span className="font-medium">Items Discovered:</span> {scanResult.discoveredUrls.length}</p>
-            <p><span className="font-medium">Keywords Used:</span> {scanResult.keywordsUsed.join(', ') || 'None'}</p>
-            <p><span className="font-medium">Tags Selected:</span> {scanResult.selectedTagIds.length > 0 ? scanResult.selectedTagIds.join(', ') : 'All tags'}</p>
-            <p><span className="font-medium">Errors:</span> {scanResult.errorCount}</p>
-            <p className="text-sm text-green-700">
-              Check the Review Queue to see discovered content items.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Scan Trigger Section */}
-      <div className="mb-6 rounded-lg border border-[var(--line)] bg-white/80 p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-[var(--ink)]">Configure Scan</h2>
-            <p className="mt-1 text-sm text-[var(--ink-soft)]">
-              Select specific tags to filter the scan, or leave all unchecked to scan all tags.
-            </p>
-          </div>
-          <button
-            onClick={handleScan}
-            disabled={scanning}
-            className="rounded-lg bg-[var(--teal-600)] px-6 py-3 font-medium text-white hover:bg-[var(--teal-700)] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {scanning ? 'Scanning...' : 'Scan'}
+        <div className="ui-actions">
+          <button type="button" onClick={loadTagGroups} className="ui-button-secondary">
+            <RefreshCcw size={15} />
+            Refresh tags
+          </button>
+          <button type="button" onClick={handleScan} disabled={scanning} className="ui-button">
+            <Radar size={15} />
+            {scanning ? 'Scanning...' : 'Run scan'}
           </button>
         </div>
+      </div>
 
-        {selectedTagIds.size > 0 && (
-          <div className="mb-4 rounded-lg bg-[var(--fog)] p-3">
-            <p className="text-sm text-[var(--ink)]">
-              <span className="font-medium">{selectedTagIds.size}</span> tag{selectedTagIds.size !== 1 ? 's' : ''} selected
-              <button
-                onClick={() => setSelectedTagIds(new Set())}
-                className="ml-3 text-[var(--teal-600)] hover:text-[var(--teal-700)] text-sm font-medium"
-              >
-                Clear all
-              </button>
-            </p>
+      {error && (
+        <div className="ui-note">
+          <div className="ui-panel-header">
+            <div>
+              <h3>Request failed</h3>
+              <p>{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scanResult && (
+        <div className="ui-panel">
+          <div className="ui-panel-header">
+            <div>
+              <h2>Scan completed</h2>
+              <p>New records were collected and forwarded into the review workflow.</p>
+            </div>
+            <span className="ui-badge success">{scanResult.discoveredUrls.length} discovered</span>
+          </div>
+          <div className="ui-grid-3">
+            <div className="metric-card">
+              <span className="metric-label">Scan job</span>
+              <strong className="metric-value">{scanResult.scanJobId.slice(0, 8)}</strong>
+            </div>
+            <div className="metric-card">
+              <span className="metric-label">Keywords used</span>
+              <strong className="metric-value">{scanResult.keywordsUsed.length}</strong>
+            </div>
+            <div className="metric-card">
+              <span className="metric-label">Errors</span>
+              <strong className="metric-value">{scanResult.errorCount}</strong>
+            </div>
+          </div>
+          <div className="ui-pill-row">
+            <span className="ui-pill">Tags: {scanResult.selectedTagIds.length > 0 ? scanResult.selectedTagIds.join(', ') : 'All tags'}</span>
+            <span className="ui-pill">Keywords: {scanResult.keywordsUsed.join(', ') || 'None'}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="ui-panel">
+        <div className="ui-panel-header">
+          <div>
+            <h2>Scan configuration</h2>
+            <p>Leave all tags unchecked to crawl across all available tag groups.</p>
+          </div>
+          {selectedTagIds.size > 0 && (
+            <button type="button" onClick={() => setSelectedTagIds(new Set())} className="ui-inline-button">
+              Clear {selectedTagIds.size} selected
+            </button>
+          )}
+        </div>
+
+        {tagGroups.length === 0 ? (
+          <div className="ui-empty">
+            <p>No tag groups found. Configure tag groups in the database before scanning.</p>
+          </div>
+        ) : (
+          <div className="ui-stack">
+            {tagGroups.map((group) => (
+              <section key={group.tagGroupId} className="ui-table-panel">
+                <button type="button" onClick={() => toggleGroup(group.tagGroupId)} className="related-item">
+                  <span>{group.groupName}</span>
+                  <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} · {group.tags.length} tags</span>
+                </button>
+                {expandedGroups.has(group.tagGroupId) && (
+                  <div className="ui-stack" style={{ padding: '16px' }}>
+                    {group.tags.length === 0 ? (
+                      <p className="helper-text">No tags in this group.</p>
+                    ) : (
+                      group.tags.map((tag: Tag) => (
+                        <label key={tag.tagId} className="related-item" style={{ cursor: 'pointer' }}>
+                          <span>
+                            <input
+                              type="checkbox"
+                              checked={selectedTagIds.has(tag.tagId)}
+                              onChange={() => toggleTag(tag.tagId)}
+                              style={{ marginRight: '10px' }}
+                            />
+                            {tag.tagName}
+                          </span>
+                          <span>{selectedTagIds.has(tag.tagId) ? 'Selected' : 'Available'}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                )}
+              </section>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Tag Groups with Checkboxes */}
-      {tagGroups.length === 0 ? (
-        <div className="rounded-lg border border-[var(--line)] bg-white/80 p-12 text-center">
-          <p className="text-lg text-[var(--ink-soft)]">
-            No tag groups found. Please configure tag groups in the database.
-          </p>
+      <div className="ui-note">
+        <div className="ui-panel-header">
+          <div>
+            <h3>What this does</h3>
+            <p>The route calls the backend scan endpoint and stores discovered items in the database-backed review flow.</p>
+          </div>
+          <span className="ui-badge muted">
+            <Search size={14} />
+            Repo requirement
+          </span>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {tagGroups.map((group: TagGroup) => (
-            <div
-              key={group.tagGroupId}
-              className="rounded-lg border border-[var(--line)] bg-white/80 overflow-hidden"
-            >
-              {/* Group Header */}
-              <button
-                onClick={() => toggleGroup(group.tagGroupId)}
-                className="w-full flex items-center justify-between px-6 py-4 bg-[var(--fog)] hover:bg-[var(--fog)]/70 transition"
-              >
-                <div className="flex items-center space-x-3">
-                  <svg
-                    className={`h-5 w-5 text-[var(--ink-soft)] transition-transform ${
-                      expandedGroups.has(group.tagGroupId) ? 'rotate-90' : ''
-                    }`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                  <h3 className="text-lg font-semibold text-[var(--ink)]">{group.groupName}</h3>
-                  <span className="text-sm text-[var(--ink-soft)]">
-                    ({group.tags.length} {group.tags.length === 1 ? 'tag' : 'tags'})
-                  </span>
-                </div>
-              </button>
-
-              {/* Tags List with Checkboxes */}
-              {expandedGroups.has(group.tagGroupId) && (
-                <div className="border-t border-[var(--line)]">
-                  {group.tags.length === 0 ? (
-                    <div className="px-6 py-8 text-center text-[var(--ink-soft)]">
-                      No tags in this group.
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-[var(--line)]">
-                      {group.tags.map((tag: Tag) => (
-                        <label
-                          key={tag.tagId}
-                          className="flex items-center px-6 py-3 hover:bg-[var(--fog)]/30 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedTagIds.has(tag.tagId)}
-                            onChange={() => toggleTag(tag.tagId)}
-                            className="h-4 w-4 rounded border-[var(--line)] text-[var(--teal-600)] focus:ring-2 focus:ring-[var(--teal-600)]/20"
-                          />
-                          <span className="ml-3 text-[var(--ink)]">{tag.tagName}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 };
