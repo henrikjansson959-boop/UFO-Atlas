@@ -40,7 +40,7 @@ export class DuplicateDetector implements IDuplicateDetector {
     // Requirement 7.1: Check if source_url exists in Review_Queue
     const reviewQueueDuplicate = await this.checkSourceUrlInTable(
       content.sourceUrl,
-      'Review_Queue'
+      'review_queue'
     );
 
     if (reviewQueueDuplicate) {
@@ -54,7 +54,7 @@ export class DuplicateDetector implements IDuplicateDetector {
     // Requirement 7.2: Check if source_url exists in Timeline_Archive
     const timelineArchiveDuplicate = await this.checkSourceUrlInTable(
       content.sourceUrl,
-      'Timeline_Archive'
+      'timeline_archive'
     );
 
     if (timelineArchiveDuplicate) {
@@ -92,7 +92,7 @@ export class DuplicateDetector implements IDuplicateDetector {
    */
   private async checkSourceUrlInTable(
     sourceUrl: string,
-    tableName: 'Review_Queue' | 'Timeline_Archive'
+    tableName: 'review_queue' | 'timeline_archive'
   ): Promise<{ contentId: number } | null> {
     const { data, error } = await this.client
       .from(tableName)
@@ -121,8 +121,8 @@ export class DuplicateDetector implements IDuplicateDetector {
     title: string
   ): Promise<{ contentId: number; similarityScore: number } | null> {
     // Fetch all titles from both tables
-    const reviewQueueTitles = await this.fetchTitlesFromTable('Review_Queue');
-    const timelineArchiveTitles = await this.fetchTitlesFromTable('Timeline_Archive');
+    const reviewQueueTitles = await this.fetchTitlesFromTable('review_queue');
+    const timelineArchiveTitles = await this.fetchTitlesFromTable('timeline_archive');
 
     const allTitles = [...reviewQueueTitles, ...timelineArchiveTitles];
 
@@ -147,7 +147,7 @@ export class DuplicateDetector implements IDuplicateDetector {
    * @returns Array of content items with ID and title
    */
   private async fetchTitlesFromTable(
-    tableName: 'Review_Queue' | 'Timeline_Archive'
+    tableName: 'review_queue' | 'timeline_archive'
   ): Promise<Array<{ contentId: number; title: string }>> {
     const { data, error } = await this.client
       .from(tableName)
@@ -186,3 +186,4 @@ export class DuplicateDetector implements IDuplicateDetector {
     return similarity;
   }
 }
+

@@ -3,7 +3,10 @@
  * Run this script to populate the database with predefined tag groups and tags
  */
 
+import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+
+dotenv.config();
 
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_KEY || '';
@@ -22,13 +25,13 @@ async function seedDatabase() {
     // Insert Tag Groups
     console.log('Creating tag groups...');
     const { data: tagGroups, error: tagGroupError } = await supabase
-      .from('Tag_Groups')
-      .insert([
+      .from('tag_groups')
+      .upsert([
         { group_name: 'People' },
         { group_name: 'UFO' },
         { group_name: 'Aliens' },
         { group_name: 'Theories' }
-      ])
+      ], { onConflict: 'group_name' })
       .select();
 
     if (tagGroupError) {
@@ -49,11 +52,11 @@ async function seedDatabase() {
     // Insert Tags for People group
     console.log('Creating tags for People group...');
     const { data: peopleTags, error: peopleTagsError } = await supabase
-      .from('Tags')
-      .insert([
+      .from('tags')
+      .upsert([
         { tag_name: 'Jesse Marcel', tag_group_id: peopleGroup.tag_group_id },
         { tag_name: 'Ross Coulthart', tag_group_id: peopleGroup.tag_group_id }
-      ])
+      ], { onConflict: 'tag_name,tag_group_id' })
       .select();
 
     if (peopleTagsError) {
@@ -66,15 +69,15 @@ async function seedDatabase() {
     // Insert Tags for UFO group
     console.log('Creating tags for UFO group...');
     const { data: ufoTags, error: ufoTagsError } = await supabase
-      .from('Tags')
-      .insert([
+      .from('tags')
+      .upsert([
         { tag_name: 'UFO', tag_group_id: ufoGroup.tag_group_id },
         { tag_name: 'Area51', tag_group_id: ufoGroup.tag_group_id },
         { tag_name: 'Roswell', tag_group_id: ufoGroup.tag_group_id },
         { tag_name: 'Aztec', tag_group_id: ufoGroup.tag_group_id },
         { tag_name: 'Crash', tag_group_id: ufoGroup.tag_group_id },
         { tag_name: 'Observation', tag_group_id: ufoGroup.tag_group_id }
-      ])
+      ], { onConflict: 'tag_name,tag_group_id' })
       .select();
 
     if (ufoTagsError) {
@@ -87,8 +90,8 @@ async function seedDatabase() {
     // Verify seed data
     console.log('\nVerifying seed data...');
     const { data: allGroups, error: verifyError } = await supabase
-      .from('Tag_Groups')
-      .select('*, Tags(*)');
+      .from('tag_groups')
+      .select('group_name, tags(tag_name)');
 
     if (verifyError) {
       console.error('Error verifying seed data:', verifyError);
@@ -97,8 +100,8 @@ async function seedDatabase() {
 
     console.log('\nSeed data summary:');
     allGroups?.forEach(group => {
-      console.log(`- ${group.group_name}: ${group.Tags?.length || 0} tags`);
-      group.Tags?.forEach((tag: any) => {
+      console.log(`- ${group.group_name}: ${group.tags?.length || 0} tags`);
+      group.tags?.forEach((tag: any) => {
         console.log(`  - ${tag.tag_name}`);
       });
     });

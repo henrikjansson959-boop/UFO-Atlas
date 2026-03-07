@@ -8,7 +8,6 @@
 import { ScanScheduler } from './ScanScheduler';
 import { ContentScanner } from '../scanner';
 import { StorageService } from '../storage';
-import { ContentExtractor } from '../extractor';
 
 /**
  * Example: Setting up automated scans

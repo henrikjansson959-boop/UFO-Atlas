@@ -14,7 +14,7 @@ export interface ScheduleConfig {
    * Examples:
    * - '0 * * * *' = every hour
    * - '0 0 * * *' = every day at midnight
-   * - '*/30 * * * *' = every 30 minutes
+   * - 'every 30 minutes' cron = star-slash-30 space star space star space star space star
    */
   cronExpression: string;
   

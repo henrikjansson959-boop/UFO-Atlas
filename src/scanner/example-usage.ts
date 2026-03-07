@@ -23,7 +23,7 @@ async function main() {
   // Optional: Set up content extractor for automatic processing
   const extractor = new ContentExtractor();
   const validator = new DataValidator();
-  const duplicateDetector = new DuplicateDetector(storage);
+  const duplicateDetector = new DuplicateDetector(supabaseUrl, supabaseKey);
 
   extractor.setValidator(validator);
   extractor.setDuplicateDetector(duplicateDetector);

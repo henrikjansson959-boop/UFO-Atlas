@@ -331,7 +331,7 @@ export class ContentExtractor {
    * Returns: 'event', 'person', 'theory', or 'news'
    */
   private classifyContentType(
-    $: cheerio.CheerioAPI,
+    _$: cheerio.CheerioAPI,
     title: string,
     description: string
   ): 'event' | 'person' | 'theory' | 'news' {

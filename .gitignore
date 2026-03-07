@@ -11,6 +11,10 @@ build/
 .env
 .env.local
 .env.*.local
+website/.env.local
+
+# Supabase local state
+supabase/.temp/
 
 # IDE
 .vscode/
