@@ -108,7 +108,7 @@ The system will be built using TypeScript for both backend and frontend, with Su
 - [x] 3. Checkpoint - Verify storage layer
   - Ensure all storage layer tests pass, ask the user if questions arise.
 
-- [~] 4. Implement data validation and duplicate detection
+- [x] 4. Implement data validation and duplicate detection
   - [x] 4.1 Create DataValidator class
     - Implement validate method checking required fields (title, source_url)
     - Validate content_type enum values
@@ -121,7 +121,7 @@ The system will be built using TypeScript for both backend and frontend, with Su
     - **Property 43: Date Format Validation** - event_date must be valid date format
     - **Validates: Requirements 10.1, 10.2, 10.3, 10.5**
   
-  - [~] 4.3 Create DuplicateDetector class
+  - [x] 4.3 Create DuplicateDetector class
     - Implement checkDuplicate method checking source_url existence in Review_Queue and Timeline_Archive
     - Calculate title similarity using fast-levenshtein library
     - Flag potential duplicates with >90% similarity
