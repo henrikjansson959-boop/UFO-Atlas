@@ -1,2 +1,2 @@
 // Storage Service implementation
-export * from './StorageService';
+export { StorageService } from './StorageService';
