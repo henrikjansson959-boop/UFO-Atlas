@@ -1,2 +1,2 @@
 // Content Scanner implementation
-export * from './ContentScanner';
+export { ContentScanner } from './ContentScanner';
