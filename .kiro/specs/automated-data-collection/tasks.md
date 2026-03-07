@@ -199,8 +199,8 @@ The system will be built using TypeScript for both backend and frontend, with Su
 - [~] 8. Checkpoint - Verify backend core functionality
   - Ensure all backend tests pass, ask the user if questions arise.
 
-- [~] 9. Implement error logging
-  - [~] 9.1 Create ErrorLogger class
+- [x] 9. Implement error logging
+  - [x] 9.1 Create ErrorLogger class
     - Implement log method to insert into Error_Logs table
     - Log timestamp, component, message, stack trace, scan_job_id
     - Integrate with all components (Scanner, Extractor, Storage)

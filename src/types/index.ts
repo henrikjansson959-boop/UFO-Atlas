@@ -283,3 +283,71 @@ export interface AdminAPI {
    */
   getSearchHistory(limit?: number): Promise<SearchHistoryEntry[]>;
 }
+
+export interface ErrorLoggerInterface {
+  /**
+   * Log an error to the Error_Logs table
+   */
+  log(
+    component: string,
+    message: string,
+    stackTrace?: string,
+    scanJobId?: string
+  ): Promise<void>;
+  
+  /**
+   * Log an error from an Error object
+   */
+  logError(
+    component: string,
+    error: Error,
+    scanJobId?: string
+  ): Promise<void>;
+  
+  /**
+   * Log a network error with URL and status code
+   */
+  logNetworkError(
+    component: string,
+    url: string,
+    statusCode: number | undefined,
+    errorMessage: string,
+    scanJobId?: string
+  ): Promise<void>;
+  
+  /**
+   * Log a scan execution with metrics
+   */
+  logScanExecution(
+    scanJobId: string,
+    startTime: Date,
+    endTime: Date,
+    itemsDiscovered: number,
+    component?: string
+  ): Promise<void>;
+  
+  /**
+   * Log a database operation with execution time
+   */
+  logDatabaseOperation(
+    component: string,
+    queryType: string,
+    executionTime: number,
+    scanJobId?: string
+  ): Promise<void>;
+  
+  /**
+   * Get recent error logs
+   */
+  getRecentLogs(limit?: number): Promise<any[]>;
+  
+  /**
+   * Get error logs for a specific component
+   */
+  getLogsByComponent(component: string, limit?: number): Promise<any[]>;
+  
+  /**
+   * Get error logs for a specific scan job
+   */
+  getLogsByScanJob(scanJobId: string): Promise<any[]>;
+}
