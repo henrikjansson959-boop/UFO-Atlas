@@ -1,3 +1,3 @@
 // Admin API implementation
-export * from './AdminAPI';
+export type { AdminAPI } from '../types';
 export { default as apiServer } from './api-server';

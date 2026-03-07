@@ -33,8 +33,10 @@ if (!supabaseUrl || !supabaseKey) {
 
 const storageService = new StorageService(supabaseUrl, supabaseKey);
 const contentScanner = new ContentScanner(storageService);
-const contentExtractor = new ContentExtractor(storageService);
-const errorLogger = new ErrorLogger(storageService);
+const contentExtractor = new ContentExtractor();
+const errorLogger = new ErrorLogger(supabaseUrl, supabaseKey);
+
+contentExtractor.setStorageService(storageService);
 
 // Set up scanner with extractor
 contentScanner.setContentExtractor(contentExtractor);
@@ -84,7 +86,8 @@ app.post('/api/review-queue/:id/approve', asyncHandler(async (req: Request, res:
   const contentId = parseInt(req.params.id, 10);
   
   if (isNaN(contentId)) {
-    return res.status(400).json({ error: 'Invalid content ID' });
+    res.status(400).json({ error: 'Invalid content ID' });
+    return;
   }
   
   await storageService.approveContent(contentId, ADMIN_USER_ID);
@@ -100,7 +103,8 @@ app.post('/api/review-queue/:id/reject', asyncHandler(async (req: Request, res: 
   const contentId = parseInt(req.params.id, 10);
   
   if (isNaN(contentId)) {
-    return res.status(400).json({ error: 'Invalid content ID' });
+    res.status(400).json({ error: 'Invalid content ID' });
+    return;
   }
   
   await storageService.rejectContent(contentId, ADMIN_USER_ID);
@@ -116,7 +120,7 @@ app.post('/api/review-queue/:id/reject', asyncHandler(async (req: Request, res: 
  * Get all keywords
  * Validates: Requirements 6.1, 6.2
  */
-app.get('/api/keywords', asyncHandler(async (req: Request, res: Response) => {
+app.get('/api/keywords', asyncHandler(async (_req: Request, res: Response) => {
   const keywords = await storageService.getKeywords();
   res.json(keywords);
 }));
@@ -130,7 +134,8 @@ app.post('/api/keywords', asyncHandler(async (req: Request, res: Response) => {
   const { keyword } = req.body;
   
   if (!keyword || typeof keyword !== 'string') {
-    return res.status(400).json({ error: 'Keyword is required' });
+    res.status(400).json({ error: 'Keyword is required' });
+    return;
   }
   
   try {
@@ -138,7 +143,8 @@ app.post('/api/keywords', asyncHandler(async (req: Request, res: Response) => {
     res.json({ success: true, keywordId, message: 'Keyword added successfully' });
   } catch (error) {
     if (error instanceof Error && error.message.includes('already exists')) {
-      return res.status(409).json({ error: error.message });
+      res.status(409).json({ error: error.message });
+      return;
     }
     throw error;
   }
@@ -154,11 +160,13 @@ app.patch('/api/keywords/:id/toggle', asyncHandler(async (req: Request, res: Res
   const { isActive } = req.body;
   
   if (isNaN(keywordId)) {
-    return res.status(400).json({ error: 'Invalid keyword ID' });
+    res.status(400).json({ error: 'Invalid keyword ID' });
+    return;
   }
   
   if (typeof isActive !== 'boolean') {
-    return res.status(400).json({ error: 'isActive must be a boolean' });
+    res.status(400).json({ error: 'isActive must be a boolean' });
+    return;
   }
   
   if (isActive) {
@@ -179,7 +187,7 @@ app.patch('/api/keywords/:id/toggle', asyncHandler(async (req: Request, res: Res
  * Get all tag groups with tags
  * Validates: Requirements 11.7, 11.8, 11.13
  */
-app.get('/api/tag-groups', asyncHandler(async (req: Request, res: Response) => {
+app.get('/api/tag-groups', asyncHandler(async (_req: Request, res: Response) => {
   // Get all tag groups (hardcoded IDs based on seed data)
   const tagGroupIds = [1, 2, 3, 4]; // People, UFO, Aliens, Theories
   const tagGroups = [];
@@ -212,11 +220,13 @@ app.post('/api/tags', asyncHandler(async (req: Request, res: Response) => {
   const { tagName, tagGroupId } = req.body;
   
   if (!tagName || typeof tagName !== 'string') {
-    return res.status(400).json({ error: 'Tag name is required' });
+    res.status(400).json({ error: 'Tag name is required' });
+    return;
   }
   
   if (!tagGroupId || typeof tagGroupId !== 'number') {
-    return res.status(400).json({ error: 'Tag group ID is required' });
+    res.status(400).json({ error: 'Tag group ID is required' });
+    return;
   }
   
   const tagId = await storageService.createTag(tagName, tagGroupId);
@@ -233,11 +243,13 @@ app.patch('/api/tags/:id', asyncHandler(async (req: Request, res: Response) => {
   const { tagName } = req.body;
   
   if (isNaN(tagId)) {
-    return res.status(400).json({ error: 'Invalid tag ID' });
+    res.status(400).json({ error: 'Invalid tag ID' });
+    return;
   }
   
   if (!tagName || typeof tagName !== 'string') {
-    return res.status(400).json({ error: 'Tag name is required' });
+    res.status(400).json({ error: 'Tag name is required' });
+    return;
   }
   
   await storageService.updateTag(tagId, tagName);
@@ -253,7 +265,8 @@ app.delete('/api/tags/:id', asyncHandler(async (req: Request, res: Response) => 
   const tagId = parseInt(req.params.id, 10);
   
   if (isNaN(tagId)) {
-    return res.status(400).json({ error: 'Invalid tag ID' });
+    res.status(400).json({ error: 'Invalid tag ID' });
+    return;
   }
   
   try {
@@ -261,7 +274,8 @@ app.delete('/api/tags/:id', asyncHandler(async (req: Request, res: Response) => 
     res.json({ success: true, message: 'Tag deleted successfully' });
   } catch (error) {
     if (error instanceof Error && error.message.includes('assigned to content')) {
-      return res.status(409).json({ error: error.message });
+      res.status(409).json({ error: error.message });
+      return;
     }
     throw error;
   }
@@ -277,11 +291,13 @@ app.post('/api/content/:id/tags', asyncHandler(async (req: Request, res: Respons
   const { tagIds } = req.body;
   
   if (isNaN(contentId)) {
-    return res.status(400).json({ error: 'Invalid content ID' });
+    res.status(400).json({ error: 'Invalid content ID' });
+    return;
   }
   
   if (!Array.isArray(tagIds)) {
-    return res.status(400).json({ error: 'tagIds must be an array' });
+    res.status(400).json({ error: 'tagIds must be an array' });
+    return;
   }
   
   await storageService.assignTagsToContent(contentId, tagIds);
@@ -301,7 +317,8 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
   const { tagIds, savedSearchId } = req.body;
   
   if (!Array.isArray(tagIds)) {
-    return res.status(400).json({ error: 'tagIds must be an array' });
+    res.status(400).json({ error: 'tagIds must be an array' });
+    return;
   }
   
   // Get active keywords
@@ -326,7 +343,7 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
  * Get all saved searches
  * Validates: Requirements 12.1, 12.3
  */
-app.get('/api/saved-searches', asyncHandler(async (req: Request, res: Response) => {
+app.get('/api/saved-searches', asyncHandler(async (_req: Request, res: Response) => {
   const savedSearches = await storageService.getSavedSearches();
   res.json(savedSearches);
 }));
@@ -340,15 +357,18 @@ app.post('/api/saved-searches', asyncHandler(async (req: Request, res: Response)
   const { searchName, keywordsUsed, selectedTagIds } = req.body;
   
   if (!searchName || typeof searchName !== 'string') {
-    return res.status(400).json({ error: 'Search name is required' });
+    res.status(400).json({ error: 'Search name is required' });
+    return;
   }
   
   if (!Array.isArray(keywordsUsed)) {
-    return res.status(400).json({ error: 'keywordsUsed must be an array' });
+    res.status(400).json({ error: 'keywordsUsed must be an array' });
+    return;
   }
   
   if (!Array.isArray(selectedTagIds)) {
-    return res.status(400).json({ error: 'selectedTagIds must be an array' });
+    res.status(400).json({ error: 'selectedTagIds must be an array' });
+    return;
   }
   
   const savedSearch = await storageService.createSavedSearch(
@@ -370,7 +390,8 @@ app.post('/api/saved-searches/:id/execute', asyncHandler(async (req: Request, re
   const savedSearchId = parseInt(req.params.id, 10);
   
   if (isNaN(savedSearchId)) {
-    return res.status(400).json({ error: 'Invalid saved search ID' });
+    res.status(400).json({ error: 'Invalid saved search ID' });
+    return;
   }
   
   // Get saved search details
@@ -378,7 +399,8 @@ app.post('/api/saved-searches/:id/execute', asyncHandler(async (req: Request, re
   const savedSearch = savedSearches.find(s => s.savedSearchId === savedSearchId);
   
   if (!savedSearch) {
-    return res.status(404).json({ error: 'Saved search not found' });
+    res.status(404).json({ error: 'Saved search not found' });
+    return;
   }
   
   // Execute scan with saved search parameters
@@ -402,19 +424,23 @@ app.post('/api/saved-searches/:id/refine', asyncHandler(async (req: Request, res
   const { searchName, keywordsUsed, selectedTagIds } = req.body;
   
   if (isNaN(parentSearchId)) {
-    return res.status(400).json({ error: 'Invalid parent search ID' });
+    res.status(400).json({ error: 'Invalid parent search ID' });
+    return;
   }
   
   if (!searchName || typeof searchName !== 'string') {
-    return res.status(400).json({ error: 'Search name is required' });
+    res.status(400).json({ error: 'Search name is required' });
+    return;
   }
   
   if (!Array.isArray(keywordsUsed)) {
-    return res.status(400).json({ error: 'keywordsUsed must be an array' });
+    res.status(400).json({ error: 'keywordsUsed must be an array' });
+    return;
   }
   
   if (!Array.isArray(selectedTagIds)) {
-    return res.status(400).json({ error: 'selectedTagIds must be an array' });
+    res.status(400).json({ error: 'selectedTagIds must be an array' });
+    return;
   }
   
   const refinedSearch = await storageService.createSavedSearch(
@@ -437,7 +463,8 @@ app.delete('/api/saved-searches/:id', asyncHandler(async (req: Request, res: Res
   const savedSearchId = parseInt(req.params.id, 10);
   
   if (isNaN(savedSearchId)) {
-    return res.status(400).json({ error: 'Invalid saved search ID' });
+    res.status(400).json({ error: 'Invalid saved search ID' });
+    return;
   }
   
   await storageService.deleteSavedSearch(savedSearchId);
@@ -489,12 +516,12 @@ app.get('/api/search-history', asyncHandler(async (req: Request, res: Response) 
 // ============================================================================
 
 // 404 handler
-app.use((req: Request, res: Response) => {
+app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
 
 // Global error handler
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error('API Error:', err);
   
   // Log error to database

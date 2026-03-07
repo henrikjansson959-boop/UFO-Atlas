@@ -7,8 +7,6 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
  */
 export class ErrorLogger {
   private client: SupabaseClient;
-  private readonly maxRetries = 3;
-  private readonly baseDelay = 1000; // 1 second
 
   constructor(supabaseUrl: string, supabaseKey: string) {
     this.client = createClient(supabaseUrl, supabaseKey, {
@@ -37,7 +35,7 @@ export class ErrorLogger {
   ): Promise<void> {
     try {
       const { error } = await this.client
-        .from('Error_Logs')
+        .from('error_logs')
         .insert({
           component,
           message,
@@ -139,7 +137,7 @@ export class ErrorLogger {
   async getRecentLogs(limit: number = 100): Promise<any[]> {
     try {
       const { data, error } = await this.client
-        .from('Error_Logs')
+        .from('error_logs')
         .select('*')
         .order('timestamp', { ascending: false })
         .limit(limit);
@@ -161,7 +159,7 @@ export class ErrorLogger {
   async getLogsByComponent(component: string, limit: number = 100): Promise<any[]> {
     try {
       const { data, error } = await this.client
-        .from('Error_Logs')
+        .from('error_logs')
         .select('*')
         .eq('component', component)
         .order('timestamp', { ascending: false })
@@ -183,7 +181,7 @@ export class ErrorLogger {
   async getLogsByScanJob(scanJobId: string): Promise<any[]> {
     try {
       const { data, error } = await this.client
-        .from('Error_Logs')
+        .from('error_logs')
         .select('*')
         .eq('scan_job_id', scanJobId)
         .order('timestamp', { ascending: false });
@@ -196,3 +194,4 @@ export class ErrorLogger {
     }
   }
 }
+

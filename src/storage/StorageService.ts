@@ -67,7 +67,7 @@ export class StorageService implements IStorageService {
   ): Promise<number> {
     return this.withRetry(async () => {
       const { data, error } = await this.client
-        .from('Review_Queue')
+        .from('review_queue')
         .insert({
           title: content.title,
           description: content.description,
@@ -94,7 +94,7 @@ export class StorageService implements IStorageService {
     return this.withRetry(async () => {
       // Start transaction by fetching content and tags
       const { data: content, error: fetchError } = await this.client
-        .from('Review_Queue')
+        .from('review_queue')
         .select('*')
         .eq('content_id', contentId)
         .single();
@@ -104,7 +104,7 @@ export class StorageService implements IStorageService {
 
       // Fetch assigned tags
       const { data: tags, error: tagsError } = await this.client
-        .from('Content_Tags')
+        .from('content_tags')
         .select('tag_id')
         .eq('content_id', contentId)
         .eq('table_name', 'Review_Queue');
@@ -113,7 +113,7 @@ export class StorageService implements IStorageService {
 
       // Insert into Timeline_Archive
       const { data: archived, error: insertError } = await this.client
-        .from('Timeline_Archive')
+        .from('timeline_archive')
         .insert({
           title: content.title,
           description: content.description,
@@ -136,7 +136,7 @@ export class StorageService implements IStorageService {
         }));
 
         const { error: tagCopyError } = await this.client
-          .from('Content_Tags')
+          .from('content_tags')
           .insert(tagInserts);
 
         if (tagCopyError) throw tagCopyError;
@@ -144,7 +144,7 @@ export class StorageService implements IStorageService {
 
       // Update Review_Queue status
       const { error: updateError } = await this.client
-        .from('Review_Queue')
+        .from('review_queue')
         .update({
           status: 'approved',
           approved_at: new Date().toISOString(),
@@ -163,7 +163,7 @@ export class StorageService implements IStorageService {
   async rejectContent(contentId: number, adminUserId: string): Promise<void> {
     return this.withRetry(async () => {
       const { error } = await this.client
-        .from('Review_Queue')
+        .from('review_queue')
         .update({
           status: 'rejected',
           rejected_at: new Date().toISOString(),
@@ -182,7 +182,7 @@ export class StorageService implements IStorageService {
   async getPendingContent(filters?: ContentFilters): Promise<ContentItem[]> {
     return this.withRetry(async () => {
       let query = this.client
-        .from('Review_Queue')
+        .from('review_queue')
         .select(`
           content_id,
           title,
@@ -242,13 +242,13 @@ export class StorageService implements IStorageService {
    */
   private async getContentTags(contentId: number, tableName: string): Promise<Tag[]> {
     const { data, error } = await this.client
-      .from('Content_Tags')
+      .from('content_tags')
       .select(`
         tag_id,
-        Tags (
+        tags (
           tag_name,
           tag_group_id,
-          Tag_Groups (
+          tag_groups (
             group_name
           )
         )
@@ -260,9 +260,9 @@ export class StorageService implements IStorageService {
 
     return (data || []).map((item: any) => ({
       tagId: item.tag_id,
-      tagName: item.Tags.tag_name,
-      tagGroupId: item.Tags.tag_group_id,
-      tagGroupName: item.Tags.Tag_Groups.group_name,
+      tagName: item.tags.tag_name,
+      tagGroupId: item.tags.tag_group_id,
+      tagGroupName: item.tags.tag_groups.group_name,
       createdAt: new Date(),
     }));
   }
@@ -274,7 +274,7 @@ export class StorageService implements IStorageService {
   async addKeyword(keyword: string): Promise<number> {
     return this.withRetry(async () => {
       const { data, error } = await this.client
-        .from('Keyword_Config')
+        .from('keyword_config')
         .insert({
           keyword_text: keyword,
           is_active: true,
@@ -301,7 +301,7 @@ export class StorageService implements IStorageService {
   async activateKeyword(keywordId: number): Promise<void> {
     return this.withRetry(async () => {
       const { error } = await this.client
-        .from('Keyword_Config')
+        .from('keyword_config')
         .update({ is_active: true })
         .eq('keyword_id', keywordId);
 
@@ -316,7 +316,7 @@ export class StorageService implements IStorageService {
   async deactivateKeyword(keywordId: number): Promise<void> {
     return this.withRetry(async () => {
       const { error } = await this.client
-        .from('Keyword_Config')
+        .from('keyword_config')
         .update({ is_active: false })
         .eq('keyword_id', keywordId);
 
@@ -331,7 +331,7 @@ export class StorageService implements IStorageService {
   async getActiveKeywords(): Promise<Keyword[]> {
     return this.withRetry(async () => {
       const { data, error } = await this.client
-        .from('Keyword_Config')
+        .from('keyword_config')
         .select('*')
         .eq('is_active', true);
 
@@ -352,7 +352,7 @@ export class StorageService implements IStorageService {
   async getKeywords(): Promise<Keyword[]> {
     return this.withRetry(async () => {
       const { data, error } = await this.client
-        .from('Keyword_Config')
+        .from('keyword_config')
         .select('*');
 
       if (error) throw error;
@@ -373,7 +373,7 @@ export class StorageService implements IStorageService {
   async updateKeywordLastScan(keywordId: number, timestamp: Date): Promise<void> {
     return this.withRetry(async () => {
       const { error } = await this.client
-        .from('Keyword_Config')
+        .from('keyword_config')
         .update({ last_scan_at: timestamp.toISOString() })
         .eq('keyword_id', keywordId);
 
@@ -388,7 +388,7 @@ export class StorageService implements IStorageService {
   async createTag(tagName: string, tagGroupId: number): Promise<number> {
     return this.withRetry(async () => {
       const { data, error } = await this.client
-        .from('Tags')
+        .from('tags')
         .insert({
           tag_name: tagName,
           tag_group_id: tagGroupId,
@@ -408,7 +408,7 @@ export class StorageService implements IStorageService {
   async updateTag(tagId: number, tagName: string): Promise<void> {
     return this.withRetry(async () => {
       const { error } = await this.client
-        .from('Tags')
+        .from('tags')
         .update({ tag_name: tagName })
         .eq('tag_id', tagId);
 
@@ -424,7 +424,7 @@ export class StorageService implements IStorageService {
     return this.withRetry(async () => {
       // Check if tag is in use
       const { data: usage, error: checkError } = await this.client
-        .from('Content_Tags')
+        .from('content_tags')
         .select('tag_id')
         .eq('tag_id', tagId)
         .limit(1);
@@ -436,7 +436,7 @@ export class StorageService implements IStorageService {
       }
 
       const { error } = await this.client
-        .from('Tags')
+        .from('tags')
         .delete()
         .eq('tag_id', tagId);
 
@@ -450,13 +450,13 @@ export class StorageService implements IStorageService {
   async getTagsByGroup(tagGroupId: number): Promise<Tag[]> {
     return this.withRetry(async () => {
       const { data, error } = await this.client
-        .from('Tags')
+        .from('tags')
         .select(`
           tag_id,
           tag_name,
           tag_group_id,
           created_at,
-          Tag_Groups (
+          tag_groups (
             group_name
           )
         `)
@@ -468,7 +468,7 @@ export class StorageService implements IStorageService {
         tagId: t.tag_id,
         tagName: t.tag_name,
         tagGroupId: t.tag_group_id,
-        tagGroupName: t.Tag_Groups.group_name,
+        tagGroupName: t.tag_groups.group_name,
         createdAt: new Date(t.created_at),
       }));
     }, 'getTagsByGroup');
@@ -482,7 +482,7 @@ export class StorageService implements IStorageService {
     return this.withRetry(async () => {
       // Determine which table the content is in
       const { data: reviewQueue } = await this.client
-        .from('Review_Queue')
+        .from('review_queue')
         .select('content_id')
         .eq('content_id', contentId)
         .single();
@@ -491,7 +491,7 @@ export class StorageService implements IStorageService {
 
       // Remove existing tags
       await this.client
-        .from('Content_Tags')
+        .from('content_tags')
         .delete()
         .eq('content_id', contentId)
         .eq('table_name', tableName);
@@ -505,7 +505,7 @@ export class StorageService implements IStorageService {
         }));
 
         const { error } = await this.client
-          .from('Content_Tags')
+          .from('content_tags')
           .insert(inserts);
 
         if (error) throw error;
@@ -527,7 +527,7 @@ export class StorageService implements IStorageService {
     ): Promise<number> {
       return this.withRetry(async () => {
         const { data, error } = await this.client
-          .from('Search_History')
+          .from('search_history')
           .insert({
             scan_job_id: scanJobId,
             keywords_used: keywordsUsed,
@@ -550,7 +550,7 @@ export class StorageService implements IStorageService {
   async getSearchHistory(limit: number = 100): Promise<any[]> {
     return this.withRetry(async () => {
       const { data, error } = await this.client
-        .from('Search_History')
+        .from('search_history')
         .select('*')
         .order('search_timestamp', { ascending: false })
         .limit(limit);
@@ -577,7 +577,7 @@ export class StorageService implements IStorageService {
       // If this is a refinement, get the next version number
       if (parentSearchId) {
         const { data: parent, error: parentError } = await this.client
-          .from('Saved_Searches')
+          .from('saved_searches')
           .select('version, search_name')
           .eq('saved_search_id', parentSearchId)
           .single();
@@ -586,7 +586,7 @@ export class StorageService implements IStorageService {
         
         // Get the highest version for this search name
         const { data: versions, error: versionError } = await this.client
-          .from('Saved_Searches')
+          .from('saved_searches')
           .select('version')
           .eq('search_name', parent.search_name)
           .order('version', { ascending: false })
@@ -599,7 +599,7 @@ export class StorageService implements IStorageService {
       }
 
       const { data, error } = await this.client
-        .from('Saved_Searches')
+        .from('saved_searches')
         .insert({
           search_name: searchName,
           version,
@@ -633,7 +633,7 @@ export class StorageService implements IStorageService {
   async getSavedSearches(): Promise<SavedSearch[]> {
     return this.withRetry(async () => {
       const { data, error } = await this.client
-        .from('Saved_Searches')
+        .from('saved_searches')
         .select('*')
         .order('created_at', { ascending: false });
 
@@ -659,7 +659,7 @@ export class StorageService implements IStorageService {
   async getSavedSearchVersions(searchName: string): Promise<SavedSearch[]> {
     return this.withRetry(async () => {
       const { data, error } = await this.client
-        .from('Saved_Searches')
+        .from('saved_searches')
         .select('*')
         .eq('search_name', searchName)
         .order('version', { ascending: false });
@@ -687,7 +687,7 @@ export class StorageService implements IStorageService {
     return this.withRetry(async () => {
       // Note: Search_History records are preserved due to foreign key constraint
       const { error } = await this.client
-        .from('Saved_Searches')
+        .from('saved_searches')
         .delete()
         .eq('saved_search_id', savedSearchId);
 
@@ -695,3 +695,4 @@ export class StorageService implements IStorageService {
     }, 'deleteSavedSearch');
   }
 }
+
