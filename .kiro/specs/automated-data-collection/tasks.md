@@ -105,7 +105,7 @@ The system will be built using TypeScript for both backend and frontend, with Su
     - **Property 56: Saved Search Deletion with History Preservation** - Deleted saved search preserves Search_History records
     - **Validates: Requirements 12.2, 12.8, 12.14**
 
-- [x] 3. Checkpoint - Verify storage layer
+- [x] 3  n.      . Checkpoint - Verify storage layer
   - Ensure all storage layer tests pass, ask the user if questions arise.
 
 - [x] 4. Implement data validation and duplicate detection
@@ -133,7 +133,7 @@ The system will be built using TypeScript for both backend and frontend, with Su
     - **Validates: Requirements 7.1, 7.2, 7.3, 7.4**
 
 - [~] 5. Implement content extraction
-  - [~] 5.1 Create ContentExtractor class with Puppeteer/Cheerio
+  - [x] 5.1 Create ContentExtractor class with Puppeteer/Cheerio
     - Implement extract method to fetch HTML from URL
     - Extract title, description, date, content type from HTML structure
     - Classify content as event, person, theory, or news
