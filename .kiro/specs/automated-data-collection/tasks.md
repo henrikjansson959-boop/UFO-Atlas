@@ -181,8 +181,8 @@ The system will be built using TypeScript for both backend and frontend, with Su
     - **Property 5: Scan Completion Logging** - items_discovered count recorded
     - **Validates: Requirements 1.3, 1.4, 1.5, 1.7, 3.10**
 
-- [~] 7. Implement scan scheduler
-  - [~] 7.1 Create ScanScheduler class with node-cron
+- [x] 7. Implement scan scheduler
+  - [x] 7.1 Create ScanScheduler class with node-cron
     - Implement scheduled scan execution at configurable intervals
     - Prevent overlapping scans for same keyword
     - Update last_scan_at timestamps in Keyword_Config

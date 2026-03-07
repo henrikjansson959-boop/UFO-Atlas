@@ -367,6 +367,21 @@ export class StorageService implements IStorageService {
   }
 
   /**
+   * Update last_scan_at timestamp for a keyword
+   * Validates: Requirement 8.10
+   */
+  async updateKeywordLastScan(keywordId: number, timestamp: Date): Promise<void> {
+    return this.withRetry(async () => {
+      const { error } = await this.client
+        .from('Keyword_Config')
+        .update({ last_scan_at: timestamp.toISOString() })
+        .eq('keyword_id', keywordId);
+
+      if (error) throw error;
+    }, 'updateKeywordLastScan');
+  }
+
+  /**
    * Create a new tag
    * Validates: Requirements 11.7
    */

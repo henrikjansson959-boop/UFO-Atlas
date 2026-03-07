@@ -180,6 +180,7 @@ export interface StorageService {
   deactivateKeyword(keywordId: number): Promise<void>;
   getActiveKeywords(): Promise<Keyword[]>;
   getKeywords(): Promise<Keyword[]>;
+  updateKeywordLastScan(keywordId: number, timestamp: Date): Promise<void>;
   
   /**
    * Manage tags
