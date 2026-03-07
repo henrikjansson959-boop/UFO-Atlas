@@ -196,7 +196,7 @@ The system will be built using TypeScript for both backend and frontend, with Su
     - **Property 38: Scan Timeout Enforcement** - Scans terminated after 30 minutes
     - **Validates: Requirements 8.8, 8.9, 8.10, 8.11**
 
-- [~] 8. Checkpoint - Verify backend core functionality
+- [x] 8. Checkpoint - Verify backend core functionality
   - Ensure all backend tests pass, ask the user if questions arise.
 
 - [x] 9. Implement error logging
