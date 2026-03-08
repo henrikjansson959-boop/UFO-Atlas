@@ -97,6 +97,37 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
   };
 };
 
+app.get('/api/system/status', asyncHandler(async (_req: Request, res: Response) => {
+  const aiStatus = await localAiService.getStatus();
+  const searchProvider = (process.env.SEARCH_PROVIDER || 'bing').toLowerCase();
+  let searchReachable = false;
+
+  if (searchProvider === 'searxng') {
+    try {
+      const baseUrl = process.env.SEARXNG_URL || 'http://searxng:8080';
+      const response = await fetch(`${baseUrl}/search?q=ufo&format=json`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; UFO-Atlas-Bot/1.0)',
+          Accept: 'application/json',
+        },
+      });
+      searchReachable = response.ok;
+    } catch {
+      searchReachable = false;
+    }
+  } else {
+    searchReachable = true;
+  }
+
+  res.json({
+    ai: aiStatus,
+    search: {
+      provider: searchProvider,
+      reachable: searchReachable,
+    },
+  });
+}));
+
 // ============================================================================
 // REVIEW QUEUE ENDPOINTS
 // ============================================================================

@@ -15,6 +15,14 @@ export type RecentScanEntry = {
   aiAssistApplied: boolean;
 };
 
+export type ActiveScanState = {
+  startedAt: number;
+  promptText: string;
+  aiAssistEnabled: boolean;
+};
+
+const ACTIVE_SCAN_STORAGE_KEY = 'ufo-atlas-active-scan';
+
 function canUseStorage(): boolean {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 }
@@ -64,4 +72,37 @@ export function saveRecentScan(result: ScanResult, promptText: string): void {
 
 export function getRecentScanByJobId(scanJobId: string): RecentScanEntry | null {
   return getRecentScans().find((entry) => entry.scanJobId === scanJobId) ?? null;
+}
+
+export function setActiveScan(state: ActiveScanState): void {
+  if (!canUseStorage()) {
+    return;
+  }
+
+  window.localStorage.setItem(ACTIVE_SCAN_STORAGE_KEY, JSON.stringify(state));
+}
+
+export function clearActiveScan(): void {
+  if (!canUseStorage()) {
+    return;
+  }
+
+  window.localStorage.removeItem(ACTIVE_SCAN_STORAGE_KEY);
+}
+
+export function getActiveScan(): ActiveScanState | null {
+  if (!canUseStorage()) {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_SCAN_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    return JSON.parse(raw) as ActiveScanState;
+  } catch {
+    return null;
+  }
 }

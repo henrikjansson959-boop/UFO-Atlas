@@ -2,7 +2,7 @@ import { Clock3, RefreshCcw } from 'lucide-react';
 import { Fragment, useEffect, useState } from 'react';
 import { logsAPI, savedSearchAPI } from '../services/api';
 import type { SavedSearch, SearchHistoryEntry } from '../types';
-import { getRecentScanByJobId } from '../utils/recentScanStore';
+import { getActiveScan, getRecentScanByJobId, type ActiveScanState } from '../utils/recentScanStore';
 
 const SearchHistory = () => {
   const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
@@ -10,9 +10,20 @@ const SearchHistory = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [activeScan, setActiveScan] = useState<ActiveScanState | null>(null);
+  const [activeElapsedMs, setActiveElapsedMs] = useState(0);
 
   useEffect(() => {
     loadData();
+    const syncActiveScan = () => {
+      const next = getActiveScan();
+      setActiveScan(next);
+      setActiveElapsedMs(next ? Date.now() - next.startedAt : 0);
+    };
+
+    syncActiveScan();
+    const timer = window.setInterval(syncActiveScan, 1000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const loadData = async () => {
@@ -76,6 +87,38 @@ const SearchHistory = () => {
           Refresh
         </button>
       </div>
+
+      {activeScan && (
+        <div className="ui-panel">
+          <div className="ui-panel-header">
+            <div>
+              <h2>Running now</h2>
+              <p>Current scan is still in progress.</p>
+            </div>
+            <span className="ui-badge warn">Live</span>
+          </div>
+          <div className="ui-grid-3">
+            <div className="metric-card">
+              <span className="metric-label">Mode</span>
+              <strong className="metric-value">{activeScan.aiAssistEnabled ? 'AI On' : 'AI Off'}</strong>
+            </div>
+            <div className="metric-card">
+              <span className="metric-label">Elapsed</span>
+              <strong className="metric-value">{formatDuration(activeElapsedMs)}</strong>
+            </div>
+            <div className="metric-card">
+              <span className="metric-label">State</span>
+              <strong className="metric-value">Running</strong>
+            </div>
+          </div>
+          {activeScan.promptText && (
+            <div style={{ marginTop: '12px' }}>
+              <h4 className="ui-table-title">Brief</h4>
+              <p>{activeScan.promptText}</p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="ui-table-panel">
         {history.length === 0 ? (

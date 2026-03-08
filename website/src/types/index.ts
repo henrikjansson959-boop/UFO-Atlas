@@ -92,6 +92,19 @@ export interface ScanResult {
   aiAssistApplied: boolean;
 }
 
+export interface SystemStatus {
+  ai: {
+    enabled: boolean;
+    reachable: boolean;
+    model: string;
+    baseUrl: string;
+  };
+  search: {
+    provider: string;
+    reachable: boolean;
+  };
+}
+
 // Filter Types
 export interface ContentFilters {
   contentType?: ContentType;

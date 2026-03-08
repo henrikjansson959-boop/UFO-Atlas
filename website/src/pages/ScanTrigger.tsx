@@ -1,8 +1,8 @@
 import { Plus, Power, Radar, RefreshCcw, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { keywordAPI, scanAPI } from '../services/api';
-import type { Keyword, ScanResult } from '../types';
-import { saveRecentScan } from '../utils/recentScanStore';
+import { keywordAPI, scanAPI, systemAPI } from '../services/api';
+import type { Keyword, ScanResult, SystemStatus } from '../types';
+import { clearActiveScan, saveRecentScan, setActiveScan } from '../utils/recentScanStore';
 
 const AI_ASSIST_STORAGE_KEY = 'ufo-atlas-ai-assist-enabled';
 
@@ -20,6 +20,7 @@ const ScanTrigger = () => {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanStartedAt, setScanStartedAt] = useState<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [aiAssistEnabled, setAiAssistEnabled] = useState<boolean>(() => {
     if (typeof window === 'undefined') {
       return true;
@@ -31,6 +32,7 @@ const ScanTrigger = () => {
 
   useEffect(() => {
     loadKeywords();
+    loadSystemStatus();
   }, []);
 
   useEffect(() => {
@@ -67,6 +69,15 @@ const ScanTrigger = () => {
       setError(err instanceof Error ? err.message : 'Failed to load keywords');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSystemStatus = async () => {
+    try {
+      const status = await systemAPI.getStatus();
+      setSystemStatus(status);
+    } catch {
+      setSystemStatus(null);
     }
   };
 
@@ -129,6 +140,11 @@ const ScanTrigger = () => {
       const startedAt = Date.now();
       setScanStartedAt(startedAt);
       setElapsedMs(0);
+      setActiveScan({
+        startedAt,
+        promptText: promptText.trim(),
+        aiAssistEnabled,
+      });
       setError(null);
       setNotice(null);
       setScanResult(null);
@@ -146,10 +162,12 @@ const ScanTrigger = () => {
           ? `Scan completed with ${result.discoveredUrls.length} discovered URLs.`
           : 'Scan completed with no new URLs.',
       );
+      await loadSystemStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to run scan');
     } finally {
       setScanning(false);
+      clearActiveScan();
     }
   };
 
@@ -185,7 +203,7 @@ const ScanTrigger = () => {
           <p>Write a brief or use active keywords.</p>
         </div>
         <div className="ui-actions">
-          <button type="button" onClick={loadKeywords} className="ui-button-secondary">
+          <button type="button" onClick={() => { loadKeywords(); loadSystemStatus(); }} className="ui-button-secondary">
             <RefreshCcw size={15} />
             Refresh
           </button>
@@ -270,6 +288,17 @@ const ScanTrigger = () => {
         </div>
 
         <div className="ui-stack" style={{ padding: '0 16px 16px' }}>
+          <div className="ui-actions">
+            <span className={`ui-badge ${systemStatus?.ai.reachable ? 'success' : 'muted'}`}>
+              AI {systemStatus?.ai.reachable ? 'connected' : 'unavailable'}
+            </span>
+            <span className={`ui-badge ${systemStatus?.search.reachable ? 'success' : 'muted'}`}>
+              Search {systemStatus?.search.reachable ? 'connected' : 'unavailable'}
+            </span>
+            {systemStatus?.ai.model ? (
+              <span className="ui-badge muted">{systemStatus.ai.model}</span>
+            ) : null}
+          </div>
           <textarea
             id="scan-brief"
             value={promptText}
@@ -286,6 +315,9 @@ const ScanTrigger = () => {
             <span className="ui-badge muted">
               {aiAssistEnabled ? 'Brief + keywords + AI plan' : 'Brief + keywords only'}
             </span>
+            {systemStatus && aiAssistEnabled && !systemStatus.ai.reachable && (
+              <span className="ui-badge warn">AI on, but unavailable</span>
+            )}
           </div>
         </div>
       </div>

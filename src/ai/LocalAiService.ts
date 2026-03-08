@@ -7,6 +7,13 @@ type OllamaGenerateResponse = {
   response?: string;
 };
 
+export type LocalAiStatus = {
+  enabled: boolean;
+  reachable: boolean;
+  model: string;
+  baseUrl: string;
+};
+
 export class LocalAiService {
   private readonly enabled: boolean;
   private readonly baseUrl: string;
@@ -20,6 +27,39 @@ export class LocalAiService {
 
   isEnabled(): boolean {
     return this.enabled;
+  }
+
+  async getStatus(): Promise<LocalAiStatus> {
+    if (!this.enabled) {
+      return {
+        enabled: false,
+        reachable: false,
+        model: this.model,
+        baseUrl: this.baseUrl,
+      };
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/api/tags`, {
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+
+      return {
+        enabled: true,
+        reachable: response.ok,
+        model: this.model,
+        baseUrl: this.baseUrl,
+      };
+    } catch {
+      return {
+        enabled: true,
+        reachable: false,
+        model: this.model,
+        baseUrl: this.baseUrl,
+      };
+    }
   }
 
   async buildQueryPlan(brief: string, keywords: string[]): Promise<QueryPlan | null> {

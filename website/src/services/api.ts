@@ -7,6 +7,7 @@ import type {
   SearchHistoryEntry,
   ErrorLog,
   ScanResult,
+  SystemStatus,
 } from '../types';
 
 type SearchHistoryApiEntry = {
@@ -23,6 +24,10 @@ type SearchHistoryApiEntry = {
 
 // API base URL - will be configured based on environment
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+
+function normalizeTimestamp(value: string): string {
+  return /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`;
+}
 
 // Helper function for API calls
 async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -217,7 +222,7 @@ export const logsAPI = {
       return {
         searchId: entry.search_id,
         scanJobId: entry.scan_job_id,
-        searchTimestamp: entry.search_timestamp,
+        searchTimestamp: normalizeTimestamp(entry.search_timestamp),
         keywordsUsed: entry.keywords_used,
         selectedTagIds: entry.selected_tag_ids,
         savedSearchId: entry.saved_search_id,
@@ -226,6 +231,12 @@ export const logsAPI = {
         execution_type: entry.execution_type,
       };
     });
+  },
+};
+
+export const systemAPI = {
+  getStatus: (): Promise<SystemStatus> => {
+    return apiCall<SystemStatus>('/system/status');
   },
 };
 
