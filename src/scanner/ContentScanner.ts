@@ -189,6 +189,7 @@ export class ContentScanner implements IContentScanner {
       let errorCount = 0;
       let itemsDiscovered = 0;
       const fallbackStrategy = options.fallbackStrategy ?? 'per-keyword';
+      const customQueries = options.customQueries?.filter((query) => query.trim().length > 0) ?? [];
 
       // If no keywords provided, get active keywords
       const searchKeywords = keywords.length > 0 ? keywords : await this.getActiveKeywords();
@@ -224,7 +225,17 @@ export class ContentScanner implements IContentScanner {
         }
       };
 
-      if (searchKeywords.length > 1) {
+      if (customQueries.length > 0) {
+        for (const query of customQueries) {
+          try {
+            const urls = await this.searchWithRetry(query, tagNames);
+            await processUrls(urls);
+          } catch (error) {
+            this.logError('executeScan', `Failed to search custom query: ${query}`, error);
+            errorCount++;
+          }
+        }
+      } else if (searchKeywords.length > 1) {
         try {
           const combinedKeywordQuery = searchKeywords.join(' ');
           const combinedUrls = await this.searchWithRetry(combinedKeywordQuery, tagNames);
@@ -363,6 +374,10 @@ export class ContentScanner implements IContentScanner {
   }
 
   private async fetchSearchResults(searchQuery: string): Promise<SearchCandidate[]> {
+    if ((process.env.SEARCH_PROVIDER || '').toLowerCase() === 'searxng') {
+      return this.fetchSearxngResults(searchQuery);
+    }
+
     const encodedQuery = encodeURIComponent(searchQuery);
     const url =
       `https://www.bing.com/search?q=${encodedQuery}&format=rss&setlang=en-US&mkt=en-US`;
@@ -403,6 +418,40 @@ export class ContentScanner implements IContentScanner {
       })
       .filter((candidate): candidate is SearchCandidate => candidate !== null);
     return candidates;
+  }
+
+  private async fetchSearxngResults(searchQuery: string): Promise<SearchCandidate[]> {
+    const baseUrl = process.env.SEARXNG_URL || 'http://searxng:8080';
+    const url = `${baseUrl}/search?q=${encodeURIComponent(searchQuery)}&format=json&language=en-US&safesearch=2&categories=news,general`;
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; UFO-Atlas-Bot/1.0)',
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`SearXNG request failed with status ${response.status}`);
+    }
+
+    const payload = (await response.json()) as {
+      results?: Array<{ url?: string; title?: string; content?: string }>;
+    };
+
+    return (payload.results ?? [])
+      .map((result): SearchCandidate | null => {
+        const candidateUrl = (result.url ?? '').trim();
+        if (!this.isHttpUrl(candidateUrl)) {
+          return null;
+        }
+
+        return {
+          url: candidateUrl,
+          title: (result.title ?? '').trim(),
+          description: (result.content ?? '').trim(),
+        };
+      })
+      .filter((candidate): candidate is SearchCandidate => candidate !== null);
   }
 
   /**

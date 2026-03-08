@@ -83,6 +83,7 @@ export interface ScanResult {
 
 export interface ScanExecutionOptions {
   fallbackStrategy?: 'per-keyword' | 'none';
+  customQueries?: string[];
 }
 
 export interface ValidationResult {

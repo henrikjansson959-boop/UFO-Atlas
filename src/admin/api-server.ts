@@ -11,6 +11,7 @@ import { CronValidator } from '../scheduler/cronValidator';
 import { DataValidator } from '../validator/DataValidator';
 import { createScheduleRoutes } from './scheduleRoutes';
 import { parseScanPrompt } from '../scanner/ScanPrompt';
+import { LocalAiService } from '../ai/LocalAiService';
 
 // Load environment variables
 dotenv.config();
@@ -71,6 +72,10 @@ console.log('ErrorLogger created');
 console.log('Creating CronValidator...');
 const cronValidator = new CronValidator();
 console.log('CronValidator created');
+
+console.log('Creating LocalAiService...');
+const localAiService = new LocalAiService();
+console.log('LocalAiService created');
 
 // Set up extractor with storage service
 contentExtractor.setStorageService(storageService);
@@ -398,6 +403,7 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
     : [];
 
   let promptKeywords: string[] = [];
+  let customQueries: string[] = [];
   if (typeof promptText === 'string' && promptText.trim().length > 0) {
     const parsedPrompt = parseScanPrompt(promptText);
     if ('error' in parsedPrompt) {
@@ -406,6 +412,12 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
     }
 
     promptKeywords = parsedPrompt.keywords;
+
+    const aiPlan = await localAiService.buildQueryPlan(promptText, promptKeywords);
+    if (aiPlan) {
+      promptKeywords = aiPlan.keywords.length > 0 ? aiPlan.keywords : promptKeywords;
+      customQueries = aiPlan.queries;
+    }
   }
   
   // Get active keywords
@@ -421,7 +433,12 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
     normalizedTagIds,
     savedSearchId,
     undefined,
-    promptKeywords.length > 0 ? { fallbackStrategy: 'none' } : undefined,
+    promptKeywords.length > 0
+      ? {
+          fallbackStrategy: 'none',
+          customQueries,
+        }
+      : undefined,
   );
   
   res.json(result);
