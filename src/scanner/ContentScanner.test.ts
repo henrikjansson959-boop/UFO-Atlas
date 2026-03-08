@@ -29,12 +29,12 @@ class MockStorageService implements Partial<StorageService> {
   }
 
   async recordSearchHistory(
-    scanJobId: string,
-    keywordsUsed: string[],
-    selectedTagIds: number[],
-    itemsDiscovered: number,
-    savedSearchId?: number,
-    savedSearchVersion?: number
+    _scanJobId: string,
+    _keywordsUsed: string[],
+    _selectedTagIds: number[],
+    _itemsDiscovered: number,
+    _savedSearchId?: number,
+    _savedSearchVersion?: number
   ): Promise<number> {
     return 1; // Mock search history ID
   }
@@ -73,17 +73,24 @@ class MockContentExtractor implements Partial<ContentExtractor> {
       rawHtml: '<html></html>',
     };
   }
+
+  async extractAndStore(url: string): Promise<number | null> {
+    this.extractedUrls.push(url);
+    return 1;
+  }
 }
 
 describe('ContentScanner', () => {
   let scanner: ContentScanner;
   let mockStorage: MockStorageService;
   let mockExtractor: MockContentExtractor;
+  let mockSearchProvider: jest.Mock<Promise<string[]>, [string]>;
 
   beforeEach(() => {
     mockStorage = new MockStorageService();
-    scanner = new ContentScanner(mockStorage as any);
     mockExtractor = new MockContentExtractor();
+    mockSearchProvider = jest.fn().mockResolvedValue([]);
+    scanner = new ContentScanner(mockStorage as any, mockSearchProvider);
   });
 
   describe('getActiveKeywords', () => {
@@ -173,17 +180,13 @@ describe('ContentScanner', () => {
     });
 
     it('should process URLs with content extractor when set', async () => {
-      // Setup: Set content extractor
       scanner.setContentExtractor(mockExtractor as any);
+      mockSearchProvider.mockResolvedValue(['https://example.com/ufo-story']);
 
-      // Mock searchInternet to return URLs
-      // Note: Since searchInternet is private, we can't easily mock it
-      // In a real test, you'd use dependency injection or make it protected
-
-      // Execute
       const result = await scanner.executeScan(['UFO'], [1]);
 
-      // Verify: Scanner executed without errors
+      expect(mockExtractor.extractedUrls).toEqual(['https://example.com/ufo-story']);
+      expect(result.discoveredUrls).toEqual(['https://example.com/ufo-story']);
       expect(result.errorCount).toBe(0);
     });
 
@@ -280,13 +283,11 @@ describe('ContentScanner', () => {
 
       // Setup: Set content extractor
       scanner.setContentExtractor(mockExtractor as any);
+      mockSearchProvider.mockResolvedValue(['https://example.com/ufo-story']);
 
-      // Execute scan
       await scanner.executeScan(['UFO'], [1]);
 
-      // Verify: recordSearchHistory was called
-      // Note: Since searchInternet returns empty array in mock, items discovered will be 0
-      expect(recordedItemsDiscovered).toBe(0);
+      expect(recordedItemsDiscovered).toBe(1);
     });
 
     it('should record saved search metadata in search history', async () => {

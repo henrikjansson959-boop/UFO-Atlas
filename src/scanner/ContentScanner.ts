@@ -5,6 +5,8 @@ import {
   ContentExtractor,
 } from '../types';
 
+type SearchProvider = (query: string) => Promise<string[]>;
+
 /**
  * ContentScanner implementation
  * Searches internet sources using keywords and tag filters
@@ -15,9 +17,11 @@ export class ContentScanner implements IContentScanner {
   private contentExtractor: ContentExtractor | null = null;
   private readonly maxRetries = 3;
   private readonly baseDelay = 1000; // 1 second
+  private readonly searchProvider: SearchProvider;
 
-  constructor(storageService: StorageService) {
+  constructor(storageService: StorageService, searchProvider?: SearchProvider) {
     this.storageService = storageService;
+    this.searchProvider = searchProvider ?? ((query) => this.fetchSearchResults(query));
   }
 
   /**
@@ -57,7 +61,7 @@ export class ContentScanner implements IContentScanner {
     ): Promise<ScanResult> {
       const scanJobId = this.generateScanJobId();
       const searchTimestamp = new Date();
-      const discoveredUrls: string[] = [];
+      const discoveredUrls = new Set<string>();
       let errorCount = 0;
       let itemsDiscovered = 0;
 
@@ -67,34 +71,57 @@ export class ContentScanner implements IContentScanner {
       // Get tag names for search queries
       const tagNames = await this.getTagNames(tagIds);
 
-      // Search for each keyword
-      for (const keyword of searchKeywords) {
-        try {
-          // Search with keyword and tag filters
-          const urls = await this.searchWithRetry(keyword, tagNames);
-          discoveredUrls.push(...urls);
+      const processUrls = async (urls: string[]) => {
+        urls.forEach((url) => discoveredUrls.add(url));
 
-          // Process discovered URLs if extractor is set
-          if (this.contentExtractor) {
-            for (const url of urls) {
-              try {
-                // Extract content from URL
-                const content = await this.contentExtractor.extract(url);
-                if (content) {
-                  // Content extraction successful - increment items discovered
-                  itemsDiscovered++;
-                }
-              } catch (error) {
-                this.logError('executeScan', `Failed to extract ${url}`, error);
-                errorCount++;
+        if (!this.contentExtractor) {
+          return;
+        }
+
+        for (const url of urls) {
+          try {
+            if (typeof this.contentExtractor.extractAndStore === 'function') {
+              const storedContentId = await this.contentExtractor.extractAndStore(url);
+              if (storedContentId !== null) {
+                itemsDiscovered++;
               }
+              continue;
             }
+
+            const content = await this.contentExtractor.extract(url);
+            if (content) {
+              itemsDiscovered++;
+            }
+          } catch (error) {
+            this.logError('executeScan', `Failed to extract ${url}`, error);
+            errorCount++;
+          }
+        }
+      };
+
+      if (searchKeywords.length > 1) {
+        try {
+          const combinedKeywordQuery = searchKeywords.join(' ');
+          const combinedUrls = await this.searchWithRetry(combinedKeywordQuery, tagNames);
+
+          if (combinedUrls.length > 0) {
+            await processUrls(combinedUrls);
+          } else {
+            await this.executePerKeywordSearch(searchKeywords, tagNames, processUrls, () => {
+              errorCount++;
+            });
           }
         } catch (error) {
-          // Log error but continue with remaining keywords (Requirement 1.8)
-          this.logError('executeScan', `Failed to search for keyword: ${keyword}`, error);
+          this.logError('executeScan', 'Failed to search combined keyword query', error);
           errorCount++;
+          await this.executePerKeywordSearch(searchKeywords, tagNames, processUrls, () => {
+            errorCount++;
+          });
         }
+      } else {
+        await this.executePerKeywordSearch(searchKeywords, tagNames, processUrls, () => {
+          errorCount++;
+        });
       }
 
       // Record search history with items discovered count (Requirements 1.3, 1.4, 1.5, 1.7)
@@ -109,13 +136,30 @@ export class ContentScanner implements IContentScanner {
 
       return {
         scanJobId,
-        discoveredUrls,
+        discoveredUrls: Array.from(discoveredUrls),
         searchTimestamp,
         keywordsUsed: searchKeywords,
         selectedTagIds: tagIds,
         errorCount,
       };
     }
+
+  private async executePerKeywordSearch(
+    keywords: string[],
+    tagNames: string[],
+    onUrls: (urls: string[]) => Promise<void>,
+    onError: () => void
+  ): Promise<void> {
+    for (const keyword of keywords) {
+      try {
+        const urls = await this.searchWithRetry(keyword, tagNames);
+        await onUrls(urls);
+      } catch (error) {
+        this.logError('executeScan', `Failed to search for keyword: ${keyword}`, error);
+        onError();
+      }
+    }
+  }
 
   /**
    * Get tag names for the given tag IDs
@@ -185,34 +229,35 @@ export class ContentScanner implements IContentScanner {
    * @returns Array of discovered URLs
    */
   private async searchInternet(keyword: string, tagNames: string[]): Promise<string[]> {
-    // Build search query with keyword and tags
     const searchQuery = this.buildSearchQuery(keyword, tagNames);
-
-    // For now, this is a mock implementation
-    // In production, you would call a real search API like:
-    // - Google Custom Search API
-    // - Bing Search API
-    // - DuckDuckGo API
-    // - Or implement web scraping with Puppeteer
-    
-    // Mock implementation returns empty array
-    // TODO: Integrate with actual search API
     console.log(`[ContentScanner] Searching for: ${searchQuery}`);
-    
-    // Example of how you would call a search API:
-    /*
-    const response = await axios.get('https://api.search-provider.com/search', {
-      params: {
-        q: searchQuery,
-        key: process.env.SEARCH_API_KEY,
-      },
-      timeout: 10000,
-    });
-    
-    return response.data.results.map((result: any) => result.url);
-    */
+    return this.searchProvider(searchQuery);
+  }
 
-    return [];
+  private async fetchSearchResults(searchQuery: string): Promise<string[]> {
+    const encodedQuery = encodeURIComponent(searchQuery);
+    const url =
+      `https://www.bing.com/search?q=${encodedQuery}&format=rss&setlang=en-US&mkt=en-US`;
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; UFO-Atlas-Bot/1.0)',
+        'Accept': 'application/rss+xml, application/xml;q=0.9, text/xml;q=0.8',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Search request failed with status ${response.status}`);
+    }
+
+    const rss = await response.text();
+    const urls = Array.from(
+      rss.matchAll(/<item>[\s\S]*?<link>(.*?)<\/link>[\s\S]*?<\/item>/gi),
+      (match) => this.decodeXmlEntities(match[1]?.trim() ?? '')
+    )
+      .filter((resultUrl) => this.isHttpUrl(resultUrl));
+
+    return Array.from(new Set(urls)).slice(0, 10);
   }
 
   /**
@@ -229,6 +274,24 @@ export class ContentScanner implements IContentScanner {
     // Combine keyword with tag names
     // Example: "UFO Jesse Marcel Roswell"
     return `${keyword} ${tagNames.join(' ')}`;
+  }
+
+  private decodeXmlEntities(value: string): string {
+    return value
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+  }
+
+  private isHttpUrl(value: string): boolean {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
   }
 
   /**

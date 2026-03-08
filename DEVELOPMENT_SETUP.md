@@ -178,7 +178,7 @@ The application uses `@supabase/supabase-js` which requires an HTTP REST API end
 - **Working Directory**: `/app` (mounted from project root)
 - **Command**: `npm install && npm run api`
 - **Environment Variables**:
-  - `SUPABASE_URL=http://postgrest:3000` (points to PostgREST)
+  - `SUPABASE_URL=http://postgrest-proxy:3000` (points to nginx proxy in front of PostgREST)
   - `SUPABASE_KEY=<jwt-token>` (for PostgREST auth)
   - `DATABASE_URL=postgresql://postgres:postgres@postgres:5432/postgres`
 
@@ -200,7 +200,7 @@ NODE_ENV=development
 API_PORT=3000
 CORS_ORIGIN=http://localhost:5173
 ADMIN_USER_ID=admin
-SUPABASE_URL=http://postgrest:3000
+SUPABASE_URL=http://postgrest-proxy:3000
 SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 DATABASE_URL=postgresql://postgres:postgres@postgres:5432/postgres
 ```

@@ -156,8 +156,10 @@ export class ContentExtractor {
   private async extractWithPuppeteer(url: string): Promise<ExtractedContent | null> {
     try {
       if (!this.browser) {
+        const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
         this.browser = await puppeteer.launch({
           headless: true,
+          executablePath,
           args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
       }

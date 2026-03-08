@@ -148,6 +148,12 @@ export interface ContentExtractor {
    * @returns Extracted content item or null if extraction fails
    */
   extract(url: string): Promise<ExtractedContent | null>;
+
+  /**
+   * Extract, validate, deduplicate, and persist content.
+   * Returns the stored content ID or null when the item is skipped.
+   */
+  extractAndStore?(url: string): Promise<number | null>;
 }
 
 export interface DataValidator {
@@ -269,7 +275,11 @@ export interface AdminAPI {
   /**
    * Trigger manual scan with tag filtering
    */
-  triggerScan(tagIds: number[], savedSearchId?: number): Promise<ScanResult>;
+  triggerScan(
+    tagIds: number[],
+    savedSearchId?: number,
+    keywordsUsed?: string[]
+  ): Promise<ScanResult>;
   
   /**
    * Get review queue

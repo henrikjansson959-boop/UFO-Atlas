@@ -4,9 +4,11 @@ import dotenv from 'dotenv';
 import { StorageService } from '../storage/StorageService';
 import { ContentScanner } from '../scanner/ContentScanner';
 import { ContentExtractor } from '../extractor/ContentExtractor';
+import { DuplicateDetector } from '../duplicate/DuplicateDetector';
 import { ErrorLogger } from '../logger/ErrorLogger';
 import { ContentFilters } from '../types';
 import { CronValidator } from '../scheduler/cronValidator';
+import { DataValidator } from '../validator/DataValidator';
 import { createScheduleRoutes } from './scheduleRoutes';
 
 // Load environment variables
@@ -53,6 +55,14 @@ console.log('Creating ContentExtractor...');
 const contentExtractor = new ContentExtractor();
 console.log('ContentExtractor created');
 
+console.log('Creating DataValidator...');
+const dataValidator = new DataValidator();
+console.log('DataValidator created');
+
+console.log('Creating DuplicateDetector...');
+const duplicateDetector = new DuplicateDetector(supabaseUrl, supabaseKey);
+console.log('DuplicateDetector created');
+
 console.log('Creating ErrorLogger...');
 const errorLogger = new ErrorLogger(supabaseUrl, supabaseKey);
 console.log('ErrorLogger created');
@@ -63,6 +73,8 @@ console.log('CronValidator created');
 
 // Set up extractor with storage service
 contentExtractor.setStorageService(storageService);
+contentExtractor.setValidator(dataValidator);
+contentExtractor.setDuplicateDetector(duplicateDetector);
 
 // Set up scanner with extractor
 contentScanner.setContentExtractor(contentExtractor);
@@ -342,20 +354,39 @@ app.post('/api/content/:id/tags', asyncHandler(async (req: Request, res: Respons
  * Validates: Requirements 8.6
  */
 app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) => {
-  const { tagIds, savedSearchId } = req.body;
+  const {
+    tagIds,
+    selectedTagIds,
+    savedSearchId,
+    keywordsUsed,
+  } = req.body;
+  const normalizedTagIds = Array.isArray(tagIds) ? tagIds : selectedTagIds;
   
-  if (!Array.isArray(tagIds)) {
+  if (!Array.isArray(normalizedTagIds)) {
     res.status(400).json({ error: 'tagIds must be an array' });
     return;
   }
+
+  if (keywordsUsed !== undefined && !Array.isArray(keywordsUsed)) {
+    res.status(400).json({ error: 'keywordsUsed must be an array when provided' });
+    return;
+  }
+
+  const normalizedKeywords = Array.isArray(keywordsUsed)
+    ? keywordsUsed
+        .map((keyword) => (typeof keyword === 'string' ? keyword.trim() : ''))
+        .filter((keyword) => keyword.length > 0)
+    : [];
   
   // Get active keywords
-  const keywords = await contentScanner.getActiveKeywords();
+  const keywords = normalizedKeywords.length > 0
+    ? normalizedKeywords
+    : await contentScanner.getActiveKeywords();
   
   // Execute scan
   const result = await contentScanner.executeScan(
     keywords,
-    tagIds,
+    normalizedTagIds,
     savedSearchId
   );
   

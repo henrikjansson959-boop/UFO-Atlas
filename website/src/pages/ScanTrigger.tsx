@@ -3,12 +3,19 @@ import { useEffect, useState } from 'react';
 import { scanAPI, tagAPI } from '../services/api';
 import type { ScanResult, Tag, TagGroup } from '../types';
 
+const parseKeywordInput = (value: string) =>
+  value
+    .split(',')
+    .map((keyword) => keyword.trim())
+    .filter((keyword, index, keywords) => keyword.length > 0 && keywords.indexOf(keyword) === index);
+
 const ScanTrigger = () => {
   const [tagGroups, setTagGroups] = useState<TagGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
+  const [keywordInput, setKeywordInput] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
@@ -59,7 +66,12 @@ const ScanTrigger = () => {
       setScanning(true);
       setError(null);
       setScanResult(null);
-      const result = await scanAPI.triggerScan(Array.from(selectedTagIds));
+      const manualKeywords = parseKeywordInput(keywordInput);
+      const result = await scanAPI.triggerScan(
+        Array.from(selectedTagIds),
+        undefined,
+        manualKeywords.length > 0 ? manualKeywords : undefined
+      );
       setScanResult(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to trigger scan');
@@ -141,13 +153,39 @@ const ScanTrigger = () => {
         <div className="ui-panel-header">
           <div>
             <h2>Scan configuration</h2>
-            <p>Leave all tags unchecked to crawl across all available tag groups.</p>
+            <p>Enter comma-separated keywords for this run, or leave the field blank to use active DB keywords.</p>
           </div>
           {selectedTagIds.size > 0 && (
             <button type="button" onClick={() => setSelectedTagIds(new Set())} className="ui-inline-button">
               Clear {selectedTagIds.size} selected
             </button>
           )}
+        </div>
+
+        <div className="ui-stack" style={{ padding: '0 16px 16px' }}>
+          <label className="helper-text" htmlFor="manual-keywords">
+            Manual keywords
+          </label>
+          <textarea
+            id="manual-keywords"
+            value={keywordInput}
+            onChange={(event) => setKeywordInput(event.target.value)}
+            rows={3}
+            placeholder="UFO, Crash, Aztec"
+            style={{
+              width: '100%',
+              resize: 'vertical',
+              minHeight: '84px',
+              borderRadius: '16px',
+              border: '1px solid var(--ui-border)',
+              background: 'var(--ui-panel)',
+              color: 'var(--ui-text)',
+              padding: '14px 16px',
+            }}
+          />
+          <p className="helper-text">
+            Current run will use: {parseKeywordInput(keywordInput).join(', ') || 'active keywords from the database'}
+          </p>
         </div>
 
         {tagGroups.length === 0 ? (
@@ -160,7 +198,7 @@ const ScanTrigger = () => {
               <section key={group.tagGroupId} className="ui-table-panel">
                 <button type="button" onClick={() => toggleGroup(group.tagGroupId)} className="related-item">
                   <span>{group.groupName}</span>
-                  <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} · {group.tags.length} tags</span>
+                  <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} Â· {group.tags.length} tags</span>
                 </button>
                 {expandedGroups.has(group.tagGroupId) && (
                   <div className="ui-stack" style={{ padding: '16px' }}>

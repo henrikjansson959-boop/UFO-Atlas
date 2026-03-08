@@ -118,10 +118,14 @@ export const tagAPI = {
 
 // Scan Trigger API
 export const scanAPI = {
-  triggerScan: (tagIds: number[], savedSearchId?: number): Promise<ScanResult> => {
+  triggerScan: (
+    tagIds: number[],
+    savedSearchId?: number,
+    keywordsUsed?: string[]
+  ): Promise<ScanResult> => {
     return apiCall<ScanResult>('/scan/trigger', {
       method: 'POST',
-      body: JSON.stringify({ tagIds, savedSearchId }),
+      body: JSON.stringify({ tagIds, savedSearchId, keywordsUsed }),
     });
   },
 };
