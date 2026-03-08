@@ -50,6 +50,10 @@ export interface SavedSearch {
   createdAt: string;
   createdBy: string;
   parentSearchId: number | null;
+  scheduleEnabled?: boolean;
+  cronExpression?: string | null;
+  nextRunAt?: string | null;
+  lastRunAt?: string | null;
 }
 
 // Search History
@@ -62,6 +66,7 @@ export interface SearchHistoryEntry {
   savedSearchId: number | null;
   savedSearchVersion: number | null;
   itemsDiscovered: number;
+  execution_type: 'manual' | 'scheduled';
 }
 
 // Error Log

@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/index.ts",
-    "api": "ts-node src/admin/api-server.ts",
+    "api": "ts-node --transpile-only src/admin/api-server.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "seed": "ts-node src/scripts/seed.ts"

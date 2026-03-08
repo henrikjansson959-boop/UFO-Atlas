@@ -23,7 +23,15 @@ async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`API call failed: ${response.statusText}`);
+    // Try to extract error message from response body
+    try {
+      const errorData = await response.json();
+      const errorMessage = errorData.error || response.statusText;
+      throw new Error(errorMessage);
+    } catch (parseError) {
+      // If JSON parsing fails, use status text
+      throw new Error(response.statusText);
+    }
   }
 
   return response.json();
@@ -176,3 +184,64 @@ export const logsAPI = {
     return apiCall<SearchHistoryEntry[]>(`/search-history${query}`);
   },
 };
+
+// Schedule API
+export interface ScheduleConfig {
+  scheduleEnabled: boolean;
+  cronExpression: string | null;
+  nextRunAt: Date | null;
+  lastRunAt: Date | null;
+}
+
+export interface SavedSearchWithSchedule extends SavedSearch {
+  scheduleEnabled: boolean;
+  cronExpression: string | null;
+  nextRunAt: Date | null;
+  lastRunAt: Date | null;
+}
+
+export const scheduleAPI = {
+  /**
+   * Update schedule configuration for a saved search
+   * POST /api/saved-searches/:id/schedule
+   */
+  updateSchedule: (
+    savedSearchId: number,
+    config: { scheduleEnabled: boolean; cronExpression: string | null }
+  ): Promise<SavedSearchWithSchedule> => {
+    return apiCall<SavedSearchWithSchedule>(`/saved-searches/${savedSearchId}/schedule`, {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  },
+
+  /**
+   * Get schedule configuration for a saved search
+   * GET /api/saved-searches/:id/schedule
+   */
+  getSchedule: (savedSearchId: number): Promise<ScheduleConfig> => {
+    return apiCall<ScheduleConfig>(`/saved-searches/${savedSearchId}/schedule`);
+  },
+
+  /**
+   * Delete schedule configuration
+   * DELETE /api/saved-searches/:id/schedule
+   */
+  deleteSchedule: (savedSearchId: number): Promise<void> => {
+    return apiCall<void>(`/saved-searches/${savedSearchId}/schedule`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
+   * Toggle schedule enabled/disabled
+   * PATCH /api/saved-searches/:id/schedule/toggle
+   */
+  toggleSchedule: (savedSearchId: number, enabled: boolean): Promise<ScheduleConfig> => {
+    return apiCall<ScheduleConfig>(`/saved-searches/${savedSearchId}/schedule/toggle`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    });
+  },
+};
+

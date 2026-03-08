@@ -6,13 +6,19 @@ import { ContentScanner } from '../scanner/ContentScanner';
 import { ContentExtractor } from '../extractor/ContentExtractor';
 import { ErrorLogger } from '../logger/ErrorLogger';
 import { ContentFilters } from '../types';
+import { CronValidator } from '../scheduler/cronValidator';
+import { createScheduleRoutes } from './scheduleRoutes';
 
 // Load environment variables
 dotenv.config();
 
+console.log('Starting API server initialization...');
+
 // Initialize Express app
 const app = express();
 const PORT = process.env.API_PORT || 3000;
+
+console.log('Express app created');
 
 // Middleware
 app.use(cors({
@@ -22,24 +28,46 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+console.log('Middleware configured');
+
 // Initialize services
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_KEY || '';
+
+console.log('Environment variables loaded:', { supabaseUrl });
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('Error: SUPABASE_URL and SUPABASE_KEY must be set in environment variables');
   process.exit(1);
 }
 
+console.log('Creating StorageService...');
 const storageService = new StorageService(supabaseUrl, supabaseKey);
-const contentScanner = new ContentScanner(storageService);
-const contentExtractor = new ContentExtractor();
-const errorLogger = new ErrorLogger(supabaseUrl, supabaseKey);
+console.log('StorageService created');
 
+console.log('Creating ContentScanner...');
+const contentScanner = new ContentScanner(storageService);
+console.log('ContentScanner created');
+
+console.log('Creating ContentExtractor...');
+const contentExtractor = new ContentExtractor();
+console.log('ContentExtractor created');
+
+console.log('Creating ErrorLogger...');
+const errorLogger = new ErrorLogger(supabaseUrl, supabaseKey);
+console.log('ErrorLogger created');
+
+console.log('Creating CronValidator...');
+const cronValidator = new CronValidator();
+console.log('CronValidator created');
+
+// Set up extractor with storage service
 contentExtractor.setStorageService(storageService);
 
 // Set up scanner with extractor
 contentScanner.setContentExtractor(contentExtractor);
+
+console.log('Services initialized successfully');
 
 // Admin user ID for actions (in production, this would come from authentication)
 const ADMIN_USER_ID = process.env.ADMIN_USER_ID || 'admin';
@@ -381,6 +409,11 @@ app.post('/api/saved-searches', asyncHandler(async (req: Request, res: Response)
   res.json(savedSearch);
 }));
 
+// Mount schedule routes for saved searches
+// Validates: Requirements 8.1
+const scheduleRoutes = createScheduleRoutes(storageService, cronValidator);
+app.use('/api/saved-searches', scheduleRoutes);
+
 /**
  * POST /api/saved-searches/:id/execute
  * Execute saved search
@@ -536,6 +569,8 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 // ============================================================================
 // START SERVER
 // ============================================================================
+
+console.log('About to start server on port', PORT);
 
 app.listen(PORT, () => {
   console.log(`AdminAPI server running on port ${PORT}`);

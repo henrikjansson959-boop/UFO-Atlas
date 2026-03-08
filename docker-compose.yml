@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ufo-atlas-db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./supabase/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ufo-atlas
+
+  # PostgREST - Provides REST API for PostgreSQL
+  postgrest:
+    image: postgrest/postgrest:latest
+    container_name: ufo-atlas-postgrest
+    environment:
+      - PGRST_DB_URI=postgres://postgres:postgres@postgres:5432/postgres
+      - PGRST_DB_SCHEMA=public
+      - PGRST_DB_ANON_ROLE=postgres
+      - PGRST_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long
+      - PGRST_DB_USE_LEGACY_GUCS=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ufo-atlas
+
+  # Nginx proxy to add /rest/v1/ path for Supabase client compatibility
+  postgrest-proxy:
+    image: nginx:alpine
+    container_name: ufo-atlas-postgrest-proxy
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - postgrest
+    networks:
+      - ufo-atlas
+
+  # Backend API Server
+  api:
+    image: node:20-alpine
+    container_name: ufo-atlas-api
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - API_PORT=3000
+      - CORS_ORIGIN=http://localhost:5173
+      - ADMIN_USER_ID=admin
+      - SUPABASE_URL=http://postgrest-proxy:3000
+      - SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/postgres
+    volumes:
+      - .:/app
+      - api_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run api"
+    depends_on:
+      - postgrest
+    networks:
+      - ufo-atlas
+
+  # Frontend Dev Server
+  frontend:
+    image: node:20-alpine
+    container_name: ufo-atlas-frontend
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:3000/api
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./website:/app
+      - frontend_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - api
+    networks:
+      - ufo-atlas
+
+volumes:
+  postgres_data:
+    driver: local
+  api_node_modules:
+    driver: local
+  frontend_node_modules:
+    driver: local
+
+networks:
+  ufo-atlas:
+    driver: bridge

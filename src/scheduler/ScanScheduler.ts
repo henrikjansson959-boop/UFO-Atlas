@@ -3,7 +3,9 @@ import {
   ContentScanner,
   StorageService,
   Keyword,
+  ScheduledSearchConfig,
 } from '../types';
+import { CronValidator } from './cronValidator';
 
 /**
  * Configuration for scheduled scans
@@ -49,6 +51,7 @@ export class ScanScheduler {
   private schedules: Map<string, cron.ScheduledTask> = new Map();
   private activeScans: Map<string, ActiveScan> = new Map();
   private readonly scanTimeout = 30 * 60 * 1000; // 30 minutes in milliseconds
+  private scheduledSearchMonitoringInterval: NodeJS.Timeout | null = null;
 
   constructor(
     contentScanner: ContentScanner,
@@ -115,6 +118,160 @@ export class ScanScheduler {
     }
     this.schedules.clear();
   }
+
+  /**
+   * Start monitoring for scheduled saved searches
+   * Checks every minute for due searches
+   * Validates: Requirements 5.1, 5.4
+   */
+  startScheduledSearchMonitoring(): void {
+    // Stop existing monitoring if it exists
+    this.stopScheduledSearchMonitoring();
+
+    // Check for due scheduled searches every minute (60000 ms)
+    this.scheduledSearchMonitoringInterval = setInterval(async () => {
+      await this.checkAndExecuteDueScheduledSearches();
+    }, 60000);
+
+    this.logInfo('startScheduledSearchMonitoring', 'Started scheduled search monitoring (checking every minute)');
+  }
+
+  /**
+   * Stop monitoring for scheduled saved searches
+   * Validates: Requirements 5.1, 5.4
+   */
+  stopScheduledSearchMonitoring(): void {
+    if (this.scheduledSearchMonitoringInterval) {
+      clearInterval(this.scheduledSearchMonitoringInterval);
+      this.scheduledSearchMonitoringInterval = null;
+      this.logInfo('stopScheduledSearchMonitoring', 'Stopped scheduled search monitoring');
+    }
+  }
+
+  /**
+   * Check for and execute due scheduled searches
+   * Called by monitoring interval
+   * @private
+   */
+  private async checkAndExecuteDueScheduledSearches(): Promise<void> {
+    try {
+      const dueSearches = await this.storageService.getDueScheduledSearches();
+      
+      if (dueSearches.length === 0) {
+        return;
+      }
+
+      this.logInfo(
+        'checkAndExecuteDueScheduledSearches',
+        `Found ${dueSearches.length} due scheduled search(es)`
+      );
+
+      // Execute each due scheduled search
+      for (const searchConfig of dueSearches) {
+        await this.executeScheduledSearch(searchConfig);
+      }
+    } catch (error) {
+      this.logError(
+        'checkAndExecuteDueScheduledSearches',
+        'Failed to check for due scheduled searches',
+        error
+      );
+    }
+  }
+  /**
+   * Execute a scheduled saved search
+   * Validates: Requirements 5.1, 6.2
+   *
+   * @param config - Scheduled search configuration
+   * @private
+   */
+  private async executeScheduledSearch(config: ScheduledSearchConfig): Promise<void> {
+    try {
+      this.logInfo(
+        'executeScheduledSearch',
+        `Executing scheduled search "${config.searchName}" (ID: ${config.savedSearchId})`
+      );
+
+      // Execute scan using existing ContentScanner with saved search configuration
+      const result = await this.contentScanner.executeScan(
+        config.keywordsUsed,
+        config.selectedTagIds,
+        config.savedSearchId,
+        undefined // savedSearchVersion not tracked for scheduled executions
+      );
+
+      // Record search history with execution_type='scheduled' (Requirement 6.2)
+      await this.storageService.recordSearchHistoryWithType(
+        result.scanJobId,
+        config.keywordsUsed,
+        config.selectedTagIds,
+        result.discoveredUrls.length,
+        'scheduled',
+        config.savedSearchId,
+        undefined
+      );
+
+      this.logInfo(
+        'executeScheduledSearch',
+        `Completed scheduled search "${config.searchName}" - discovered ${result.discoveredUrls.length} items`
+      );
+    } catch (error) {
+      this.logError(
+        'executeScheduledSearch',
+        `Failed to execute scheduled search "${config.searchName}" (ID: ${config.savedSearchId})`,
+        error
+      );
+      // Don't throw - continue with other scheduled searches
+    } finally {
+      // Update next_run_at even on failure to prevent retry loops (Requirement 5.3)
+      await this.updateScheduledSearchAfterExecution(
+        config.savedSearchId,
+        new Date(),
+        config.cronExpression
+      );
+    }
+  }
+
+  /**
+   * Update scheduled search timestamps after execution
+   * Updates last_run_at and calculates next_run_at
+   * Validates: Requirements 5.2, 5.3
+   * 
+   * @param savedSearchId - ID of the executed search
+   * @param executionTime - Time of execution
+   * @param cronExpression - Cron expression for calculating next run
+   */
+  private async updateScheduledSearchAfterExecution(
+    savedSearchId: number,
+    executionTime: Date,
+    cronExpression: string
+  ): Promise<void> {
+    try {
+      // Calculate next run time using CronValidator
+      const cronValidator = new CronValidator();
+      const nextRunAt = cronValidator.calculateNextRun(cronExpression, executionTime);
+
+      // Update both last_run_at and next_run_at in database
+      await this.storageService.updateScheduledSearchExecution(
+        savedSearchId,
+        executionTime,
+        nextRunAt
+      );
+
+      this.logInfo(
+        'updateScheduledSearchAfterExecution',
+        `Updated scheduled search ${savedSearchId}: last_run_at=${executionTime.toISOString()}, next_run_at=${nextRunAt.toISOString()}`
+      );
+    } catch (error) {
+      this.logError(
+        'updateScheduledSearchAfterExecution',
+        `Failed to update scheduled search ${savedSearchId} after execution`,
+        error
+      );
+      // Don't throw - this is a cleanup operation
+    }
+  }
+
 
   /**
    * Execute a scheduled scan for all active keywords

@@ -27,6 +27,9 @@ async function setupAutomatedScans() {
   // Create scheduler
   const scheduler = new ScanScheduler(contentScanner, storageService);
   
+  // Start scheduled search monitoring (checks for due saved searches every minute)
+  scheduler.startScheduledSearchMonitoring();
+  
   // Example 1: Schedule hourly scans for all tags
   scheduler.scheduleScans('hourly-all-tags', {
     cronExpression: '0 * * * *', // Every hour at minute 0
@@ -102,6 +105,9 @@ async function manageSchedules(scheduler: ScanScheduler) {
  */
 async function shutdown(scheduler: ScanScheduler) {
   console.log('Shutting down scheduler...');
+  
+  // Stop scheduled search monitoring
+  scheduler.stopScheduledSearchMonitoring();
   
   // Stop all scheduled scans
   scheduler.stopAllSchedules();

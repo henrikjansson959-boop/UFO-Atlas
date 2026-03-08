@@ -55,6 +55,23 @@ export interface SavedSearch {
   parentSearchId: number | null;
 }
 
+export interface SavedSearchWithSchedule extends SavedSearch {
+  scheduleEnabled: boolean;
+  cronExpression: string | null;
+  nextRunAt: Date | null;
+  lastRunAt: Date | null;
+}
+
+export interface ScheduledSearchConfig {
+  savedSearchId: number;
+  searchName: string;
+  cronExpression: string;
+  nextRunAt: Date;
+  lastRunAt: Date | null;
+  keywordsUsed: string[];
+  selectedTagIds: number[];
+}
+
 export interface ScanResult {
   scanJobId: string;
   discoveredUrls: string[];
@@ -204,6 +221,19 @@ export interface StorageService {
   ): Promise<number>;
   
   /**
+   * Record search history with execution type
+   */
+  recordSearchHistoryWithType(
+    scanJobId: string,
+    keywordsUsed: string[],
+    selectedTagIds: number[],
+    itemsDiscovered: number,
+    executionType: 'manual' | 'scheduled',
+    savedSearchId?: number,
+    savedSearchVersion?: number
+  ): Promise<number>;
+  
+  /**
    * Manage saved searches
    */
   createSavedSearch(
@@ -216,6 +246,23 @@ export interface StorageService {
   getSavedSearches(): Promise<SavedSearch[]>;
   getSavedSearchVersions(searchName: string): Promise<SavedSearch[]>;
   deleteSavedSearch(savedSearchId: number): Promise<void>;
+  
+  /**
+   * Manage saved search schedules
+   */
+  updateSavedSearchSchedule(
+    savedSearchId: number,
+    scheduleEnabled: boolean,
+    cronExpression: string | null,
+    nextRunAt: Date | null
+  ): Promise<void>;
+  getSavedSearchWithSchedule(savedSearchId: number): Promise<SavedSearchWithSchedule>;
+  getDueScheduledSearches(): Promise<ScheduledSearchConfig[]>;
+  updateScheduledSearchExecution(
+    savedSearchId: number,
+    lastRunAt: Date,
+    nextRunAt: Date
+  ): Promise<void>;
 }
 
 export interface AdminAPI {

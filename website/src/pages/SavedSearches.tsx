@@ -1,7 +1,8 @@
-import { History, Play, Save, Search, Trash2 } from 'lucide-react';
+import { Save, Search } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { keywordAPI, savedSearchAPI, tagAPI } from '../services/api';
 import type { Keyword, SavedSearch, ScanResult, Tag, TagGroup } from '../types';
+import { SavedSearchCard } from '../components/SavedSearchCard';
 
 const SavedSearches = () => {
   const [tagGroups, setTagGroups] = useState<TagGroup[]>([]);
@@ -289,7 +290,7 @@ const SavedSearches = () => {
               <div key={group.tagGroupId} className="ui-table-panel">
                 <button type="button" onClick={() => toggleGroup(group.tagGroupId)} className="related-item">
                   <span>{group.groupName}</span>
-                  <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} · {group.tags.length} tags</span>
+                  <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} ï¿½ {group.tags.length} tags</span>
                 </button>
                 {expandedGroups.has(group.tagGroupId) && (
                   <div className="ui-stack" style={{ padding: '16px' }}>
@@ -326,55 +327,22 @@ const SavedSearches = () => {
         {latestSearches.length === 0 ? (
           <div className="ui-empty"><p>No saved searches yet. Create one above to start building reusable queries.</p></div>
         ) : (
-          <div className="ui-stack">
-            {latestSearches.map((search) => (
-              <article key={search.savedSearchId} className="entry-card">
-                <div className="entry-heading">
-                  <div className="entry-heading-main">
-                    <span className="entry-date">Versioned search</span>
-                    <h3 className="entry-title" style={{ maxWidth: '16ch' }}>{search.searchName}</h3>
-                  </div>
-                  <span className="ui-badge">v{search.version}</span>
-                </div>
-                <p className="entry-line">Created {new Date(search.createdAt).toLocaleString()} by {search.createdBy}</p>
-                <div className="entry-meta">
-                  <span>Keywords: {search.keywordsUsed.join(', ') || 'None'}</span>
-                  <span>Tags: {search.selectedTagIds.length > 0 ? search.selectedTagIds.map((id) => getTagName(id)).join(', ') : 'All tags'}</span>
-                </div>
-                <div className="ui-actions" style={{ marginTop: '16px' }}>
-                  <button type="button" onClick={() => handleExecuteSearch(search)} disabled={executing} className="ui-button">
-                    <Play size={15} />
-                    Execute
-                  </button>
-                  <button type="button" onClick={() => handleRefineSearch(search)} className="ui-button-secondary">Refine</button>
-                  <button type="button" onClick={() => handleLoadSearch(search)} className="ui-button-secondary">Load</button>
-                  <button type="button" onClick={() => handleDeleteSearch(search.savedSearchId, search.searchName)} className="ui-button-danger">
-                    <Trash2 size={15} />
-                    Delete
-                  </button>
-                  <button type="button" onClick={() => toggleVersionHistory(search.searchName)} className="ui-button-secondary">
-                    <History size={15} />
-                    {expandedVersions.has(search.searchName) ? 'Hide versions' : 'View versions'}
-                  </button>
-                </div>
-
-                {expandedVersions.has(search.searchName) && versionHistory[search.searchName] && (
-                  <div className="ui-stack" style={{ marginTop: '18px' }}>
-                    {versionHistory[search.searchName]
-                      .sort((a, b) => b.version - a.version)
-                      .map((version) => (
-                        <div key={version.savedSearchId} className="related-item">
-                          <span>
-                            {version.searchName} v{version.version} · {new Date(version.createdAt).toLocaleString()}
-                          </span>
-                          <span>
-                            <button type="button" onClick={() => handleLoadSearch(version)} className="ui-inline-button">Load</button>
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </article>
+          <div className="space-y-4">
+            {latestSearches.map((search: SavedSearch) => (
+              <SavedSearchCard
+                key={search.savedSearchId}
+                search={search}
+                tagGroups={tagGroups}
+                executing={executing}
+                expandedVersions={expandedVersions}
+                versionHistory={versionHistory}
+                onExecute={handleExecuteSearch}
+                onRefine={handleRefineSearch}
+                onLoad={handleLoadSearch}
+                onDelete={handleDeleteSearch}
+                onToggleVersionHistory={toggleVersionHistory}
+                onScheduleUpdate={loadData}
+              />
             ))}
           </div>
         )}

@@ -6,6 +6,7 @@ import {
   Tag,
   SavedSearch,
   ContentFilters,
+  ScheduledSearchConfig,
   StorageService as IStorageService,
 } from '../types';
 
@@ -545,6 +546,39 @@ export class StorageService implements IStorageService {
     }
 
   /**
+   * Record search history with execution type
+   * Validates: Requirements 6.1, 6.2
+   */
+  async recordSearchHistoryWithType(
+    scanJobId: string,
+    keywordsUsed: string[],
+    selectedTagIds: number[],
+    itemsDiscovered: number,
+    executionType: 'manual' | 'scheduled',
+    savedSearchId?: number,
+    savedSearchVersion?: number
+  ): Promise<number> {
+    return this.withRetry(async () => {
+      const { data, error } = await this.client
+        .from('Search_History')
+        .insert({
+          scan_job_id: scanJobId,
+          keywords_used: keywordsUsed,
+          selected_tag_ids: selectedTagIds,
+          saved_search_id: savedSearchId || null,
+          saved_search_version: savedSearchVersion || null,
+          items_discovered: itemsDiscovered,
+          execution_type: executionType,
+        })
+        .select('search_id')
+        .single();
+
+      if (error) throw error;
+      return data.search_id;
+    }, 'recordSearchHistoryWithType');
+  }
+
+  /**
    * Get search history
    */
   async getSearchHistory(limit: number = 100): Promise<any[]> {
@@ -693,6 +727,115 @@ export class StorageService implements IStorageService {
 
       if (error) throw error;
     }, 'deleteSavedSearch');
+  }
+  /**
+   * Update schedule configuration for saved search
+   * Validates: Requirements 1.2, 1.4, 8.1, 8.2
+   */
+  async updateSavedSearchSchedule(
+    savedSearchId: number,
+    scheduleEnabled: boolean,
+    cronExpression: string | null,
+    nextRunAt: Date | null
+  ): Promise<void> {
+    return this.withRetry(async () => {
+      const { error } = await this.client
+        .from('Saved_Searches')
+        .update({
+          schedule_enabled: scheduleEnabled,
+          cron_expression: cronExpression,
+          next_run_at: nextRunAt ? nextRunAt.toISOString() : null,
+        })
+        .eq('saved_search_id', savedSearchId);
+
+      if (error) throw error;
+    }, 'updateSavedSearchSchedule');
+  }
+
+  /**
+   * Get saved search with schedule configuration
+   * Validates: Requirements 1.2, 1.4, 8.1, 8.2
+   */
+  async getSavedSearchWithSchedule(savedSearchId: number): Promise<SavedSearch & {
+    scheduleEnabled: boolean;
+    cronExpression: string | null;
+    nextRunAt: Date | null;
+    lastRunAt: Date | null;
+  }> {
+    return this.withRetry(async () => {
+      const { data, error } = await this.client
+        .from('Saved_Searches')
+        .select('*')
+        .eq('saved_search_id', savedSearchId)
+        .single();
+
+      if (error) throw error;
+      if (!data) throw new Error(`Saved search ${savedSearchId} not found`);
+
+      return {
+        savedSearchId: data.saved_search_id,
+        searchName: data.search_name,
+        version: data.version,
+        keywordsUsed: data.keywords_used,
+        selectedTagIds: data.selected_tag_ids,
+        createdAt: new Date(data.created_at),
+        createdBy: data.created_by,
+        parentSearchId: data.parent_search_id,
+        scheduleEnabled: data.schedule_enabled || false,
+        cronExpression: data.cron_expression || null,
+        nextRunAt: data.next_run_at ? new Date(data.next_run_at) : null,
+        lastRunAt: data.last_run_at ? new Date(data.last_run_at) : null,
+      };
+    }, 'getSavedSearchWithSchedule');
+  }
+
+  /**
+   * Get all due scheduled searches
+   * Returns searches where schedule_enabled=true AND next_run_at <= NOW()
+   * Validates: Requirements 5.1
+   */
+  async getDueScheduledSearches(): Promise<ScheduledSearchConfig[]> {
+    return this.withRetry(async () => {
+      const { data, error } = await this.client
+        .from('Saved_Searches')
+        .select('*')
+        .eq('schedule_enabled', true)
+        .lte('next_run_at', new Date().toISOString());
+
+      if (error) throw error;
+
+      return (data || []).map((row: any) => ({
+        savedSearchId: row.saved_search_id,
+        searchName: row.search_name,
+        cronExpression: row.cron_expression,
+        nextRunAt: new Date(row.next_run_at),
+        lastRunAt: row.last_run_at ? new Date(row.last_run_at) : null,
+        keywordsUsed: row.keywords_used,
+        selectedTagIds: row.selected_tag_ids,
+      }));
+    }, 'getDueScheduledSearches');
+  }
+
+  /**
+   * Update last_run_at and next_run_at after scheduled execution
+   * Validates: Requirements 5.2, 5.3
+   */
+  async updateScheduledSearchExecution(
+    savedSearchId: number,
+    lastRunAt: Date,
+    nextRunAt: Date
+  ): Promise<void> {
+    return this.withRetry(async () => {
+      const { error } = await this.client
+        .from('Saved_Searches')
+        .update({
+          last_run_at: lastRunAt.toISOString(),
+          next_run_at: nextRunAt.toISOString(),
+        })
+        .eq('saved_search_id', savedSearchId);
+
+      if (error) throw error;
+    }, 'updateScheduledSearchExecution');
   }
 }
 
