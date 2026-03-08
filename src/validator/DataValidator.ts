@@ -6,6 +6,24 @@ import { ExtractedContent, ValidationResult, DataValidator as IDataValidator } f
  */
 export class DataValidator implements IDataValidator {
   private readonly VALID_CONTENT_TYPES = ['event', 'person', 'theory', 'news'] as const;
+  private readonly BLOCKED_CONTENT_TERMS = [
+    'porn',
+    'porno',
+    'sex',
+    'sexual',
+    'escort',
+    'nude',
+    'xxx',
+    'cocaine',
+    'heroin',
+    'meth',
+    'drug cartel',
+    'drug trafficking',
+    'rape',
+    'gore',
+    'beheading',
+    'snuff',
+  ];
 
   /**
    * Validate extracted content
@@ -42,6 +60,11 @@ export class DataValidator implements IDataValidator {
       if (!this.isValidDate(content.eventDate)) {
         errors.push('Event date must be a valid date in ISO 8601 format');
       }
+    }
+
+    const moderationText = `${content.title} ${content.description} ${content.sourceUrl}`.toLowerCase();
+    if (this.BLOCKED_CONTENT_TERMS.some((term) => moderationText.includes(term))) {
+      errors.push('Content blocked by safety filter');
     }
 
     return {

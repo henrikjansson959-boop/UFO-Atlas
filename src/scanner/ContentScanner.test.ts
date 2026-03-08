@@ -190,6 +190,30 @@ describe('ContentScanner', () => {
       expect(result.errorCount).toBe(0);
     });
 
+    it('should filter out irrelevant 3D and motorsport URLs', async () => {
+      mockSearchProvider.mockResolvedValue([
+        'https://www.daz3d.com/dforce-synth-swimsuit-texture-add-on',
+        'https://www.formula1.com/en/latest/article.aztec-grand-prix-rumour.123.html',
+        'https://example.com/aztec-ufo-crash-site',
+      ]);
+
+      const result = await scanner.executeScan(['Aztec', 'UFO'], []);
+
+      expect(result.discoveredUrls).toEqual(['https://example.com/aztec-ufo-crash-site']);
+    });
+
+    it('should filter out unsafe adult or drug-related URLs', async () => {
+      mockSearchProvider.mockResolvedValue([
+        'https://example.com/ufo-disclosure-report',
+        'https://example.com/ufo-sex-cult-rumor',
+        'https://example.com/alien-drug-cartel-story',
+      ]);
+
+      const result = await scanner.executeScan(['UFO'], []);
+
+      expect(result.discoveredUrls).toEqual(['https://example.com/ufo-disclosure-report']);
+    });
+
     it('should include saved search metadata when provided', async () => {
       // Execute with saved search metadata
       const result = await scanner.executeScan(
@@ -238,6 +262,16 @@ describe('ContentScanner', () => {
 
       // Verify
       expect(result.selectedTagIds).toEqual([]);
+    });
+  });
+
+  describe('query construction', () => {
+    it('should bias ambiguous searches toward UFO context', async () => {
+      await scanner.executeScan(['Aztec'], []);
+
+      expect(mockSearchProvider).toHaveBeenCalledWith(
+        expect.stringContaining('"UFO" OR "UAP" OR extraterrestrial'),
+      );
     });
   });
 

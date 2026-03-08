@@ -7,6 +7,104 @@ import {
 
 type SearchProvider = (query: string) => Promise<string[]>;
 
+type SearchCandidate = {
+  url: string;
+  title?: string;
+  description?: string;
+};
+
+const UFO_FOCUS_TERMS = [
+  'ufo',
+  'ufos',
+  'uap',
+  'uaps',
+  'alien',
+  'aliens',
+  'extraterrestrial',
+  'extraterrestrials',
+  'flying saucer',
+  'flying saucers',
+  'nhi',
+  'non-human intelligence',
+  'abduction',
+  'abductions',
+  'roswell',
+  'aztec',
+  'area 51',
+  'aatip',
+  'aawsap',
+  'grusch',
+  'whistleblower',
+  'crash retrieval',
+  'reverse engineering',
+];
+
+const CONSPIRACY_TERMS = [
+  'conspiracy',
+  'conspiracies',
+  'cover up',
+  'cover-up',
+  'coverup',
+  'disclosure',
+  'secret program',
+  'secret programs',
+  'classified',
+  'government secrecy',
+  'hidden truth',
+  'suppressed',
+  'leak',
+  'leaks',
+  'majestic 12',
+];
+
+const IRRELEVANT_TERMS = [
+  'daz3d',
+  '3d model',
+  '3d models',
+  '3d software',
+  '3d animation',
+  'texture add-on',
+  'texture addon',
+  'swimsuit',
+  'genesis 8',
+  'genesis 9',
+  'formula 1',
+  'formula one',
+  'grand prix',
+  'f1',
+  'motorsport',
+  'stock photo',
+  'wallpaper',
+  'cosplay',
+  'video game',
+];
+
+const BLOCKED_SAFETY_TERMS = [
+  'porn',
+  'porno',
+  'sex',
+  'sexual',
+  'escort',
+  'nude',
+  'xxx',
+  'drug',
+  'cocaine',
+  'heroin',
+  'meth',
+  'cartel',
+  'drug cartel',
+  'drug trafficking',
+  'rape',
+  'gore',
+  'beheading',
+  'snuff',
+];
+
+const BLOCKED_DOMAINS = [
+  'daz3d.com',
+  'formula1.com',
+];
+
 /**
  * ContentScanner implementation
  * Searches internet sources using keywords and tag filters
@@ -231,7 +329,12 @@ export class ContentScanner implements IContentScanner {
   private async searchInternet(keyword: string, tagNames: string[]): Promise<string[]> {
     const searchQuery = this.buildSearchQuery(keyword, tagNames);
     console.log(`[ContentScanner] Searching for: ${searchQuery}`);
-    return this.searchProvider(searchQuery);
+    const urls = await this.searchProvider(searchQuery);
+    return this.filterAndRankUrls(
+      urls.map((url) => ({ url })),
+      keyword,
+      tagNames,
+    );
   }
 
   private async fetchSearchResults(searchQuery: string): Promise<string[]> {
@@ -251,13 +354,31 @@ export class ContentScanner implements IContentScanner {
     }
 
     const rss = await response.text();
-    const urls = Array.from(
-      rss.matchAll(/<item>[\s\S]*?<link>(.*?)<\/link>[\s\S]*?<\/item>/gi),
-      (match) => this.decodeXmlEntities(match[1]?.trim() ?? '')
-    )
-      .filter((resultUrl) => this.isHttpUrl(resultUrl));
+    const items = Array.from(
+      rss.matchAll(/<item>([\s\S]*?)<\/item>/gi),
+      (match) => match[1] ?? '',
+    );
 
-    return Array.from(new Set(urls)).slice(0, 10);
+    const candidates = items
+      .map((item): SearchCandidate | null => {
+        const urlMatch = item.match(/<link>(.*?)<\/link>/i);
+        const titleMatch = item.match(/<title>(.*?)<\/title>/i);
+        const descriptionMatch = item.match(/<description>(.*?)<\/description>/i);
+
+        const candidateUrl = this.decodeXmlEntities(urlMatch?.[1]?.trim() ?? '');
+        if (!this.isHttpUrl(candidateUrl)) {
+          return null;
+        }
+
+        return {
+          url: candidateUrl,
+          title: this.stripHtml(this.decodeXmlEntities(titleMatch?.[1]?.trim() ?? '')),
+          description: this.stripHtml(this.decodeXmlEntities(descriptionMatch?.[1]?.trim() ?? '')),
+        };
+      })
+      .filter((candidate): candidate is SearchCandidate => candidate !== null);
+
+    return this.filterAndRankUrls(candidates, searchQuery, []);
   }
 
   /**
@@ -267,13 +388,99 @@ export class ContentScanner implements IContentScanner {
    * @returns Combined search query string
    */
   private buildSearchQuery(keyword: string, tagNames: string[]): string {
-    if (tagNames.length === 0) {
-      return keyword;
+    const baseTerms = [keyword, ...tagNames].filter((term) => term.trim().length > 0);
+    const baseQuery = baseTerms.join(' ').trim();
+    const hasUfoContext = this.containsAnyTerm(baseQuery.toLowerCase(), [
+      ...UFO_FOCUS_TERMS,
+      ...CONSPIRACY_TERMS,
+    ]);
+    const anchorClause = hasUfoContext
+      ? '"UFO" OR "UAP" OR extraterrestrial OR conspiracy'
+      : '"UFO" OR "UAP" OR extraterrestrial OR "flying saucer" OR conspiracy';
+
+    return `${baseQuery} ${anchorClause}`.trim();
+  }
+
+  private filterAndRankUrls(
+    candidates: SearchCandidate[],
+    keyword: string,
+    tagNames: string[],
+  ): string[] {
+    const queryText = `${keyword} ${tagNames.join(' ')}`.toLowerCase();
+    const deduped = new Map<string, { url: string; score: number }>();
+
+    for (const candidate of candidates) {
+      const score = this.scoreCandidate(candidate, queryText);
+      if (score < 4) {
+        continue;
+      }
+
+      const existing = deduped.get(candidate.url);
+      if (!existing || score > existing.score) {
+        deduped.set(candidate.url, { url: candidate.url, score });
+      }
     }
 
-    // Combine keyword with tag names
-    // Example: "UFO Jesse Marcel Roswell"
-    return `${keyword} ${tagNames.join(' ')}`;
+    return Array.from(deduped.values())
+      .sort((left, right) => right.score - left.score)
+      .map((entry) => entry.url)
+      .slice(0, 12);
+  }
+
+  private scoreCandidate(candidate: SearchCandidate, queryText: string): number {
+    const parsed = this.tryParseUrl(candidate.url);
+    const domain = parsed?.hostname.toLowerCase() ?? '';
+    const candidateText = [
+      candidate.title ?? '',
+      candidate.description ?? '',
+      candidate.url,
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    if (this.matchesBlockedDomain(domain)) {
+      return -100;
+    }
+
+    if (this.containsAnyTerm(candidateText, BLOCKED_SAFETY_TERMS)) {
+      return -100;
+    }
+
+    let score = 0;
+
+    if (this.containsAnyTerm(candidateText, UFO_FOCUS_TERMS)) {
+      score += 8;
+    }
+
+    if (this.containsAnyTerm(candidateText, CONSPIRACY_TERMS)) {
+      score += 5;
+    }
+
+    if (this.containsAnyTerm(candidateText, IRRELEVANT_TERMS)) {
+      score -= 9;
+    }
+
+    const queryTokens = this.tokenize(`${queryText} ${candidate.title ?? ''}`);
+    for (const token of queryTokens) {
+      if (token.length < 3) {
+        continue;
+      }
+
+      if (candidateText.includes(token)) {
+        score += 2;
+      }
+    }
+
+    const queryNeedsUfoContext = this.containsAnyTerm(queryText, [
+      ...UFO_FOCUS_TERMS,
+      ...CONSPIRACY_TERMS,
+    ]);
+
+    if (queryNeedsUfoContext && !this.containsAnyTerm(candidateText, [...UFO_FOCUS_TERMS, ...CONSPIRACY_TERMS])) {
+      score -= 10;
+    }
+
+    return score;
   }
 
   private decodeXmlEntities(value: string): string {
@@ -285,6 +492,10 @@ export class ContentScanner implements IContentScanner {
       .replace(/&#39;/g, "'");
   }
 
+  private stripHtml(value: string): string {
+    return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
   private isHttpUrl(value: string): boolean {
     try {
       const parsed = new URL(value);
@@ -292,6 +503,28 @@ export class ContentScanner implements IContentScanner {
     } catch {
       return false;
     }
+  }
+
+  private tryParseUrl(value: string): URL | null {
+    try {
+      return new URL(value);
+    } catch {
+      return null;
+    }
+  }
+
+  private tokenize(value: string): string[] {
+    return Array.from(new Set(value.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []));
+  }
+
+  private containsAnyTerm(text: string, terms: string[]): boolean {
+    return terms.some((term) => text.includes(term));
+  }
+
+  private matchesBlockedDomain(domain: string): boolean {
+    return BLOCKED_DOMAINS.some(
+      (blockedDomain) => domain === blockedDomain || domain.endsWith(`.${blockedDomain}`),
+    );
   }
 
   /**
