@@ -79,6 +79,10 @@ export interface ScanResult {
   keywordsUsed: string[];
   selectedTagIds: number[];
   errorCount: number;
+  durationMs: number;
+  queriesUsed: string[];
+  aiAssistRequested: boolean;
+  aiAssistApplied: boolean;
 }
 
 export interface ScanExecutionOptions {

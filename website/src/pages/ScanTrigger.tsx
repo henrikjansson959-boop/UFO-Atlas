@@ -2,6 +2,9 @@ import { Plus, Power, Radar, RefreshCcw, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { keywordAPI, scanAPI } from '../services/api';
 import type { Keyword, ScanResult } from '../types';
+import { saveRecentScan } from '../utils/recentScanStore';
+
+const AI_ASSIST_STORAGE_KEY = 'ufo-atlas-ai-assist-enabled';
 
 const ScanTrigger = () => {
   const [keywords, setKeywords] = useState<Keyword[]>([]);
@@ -15,10 +18,36 @@ const ScanTrigger = () => {
   const [busyKeywordId, setBusyKeywordId] = useState<number | null>(null);
   const [deletingKeywordId, setDeletingKeywordId] = useState<number | null>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [scanStartedAt, setScanStartedAt] = useState<number | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [aiAssistEnabled, setAiAssistEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') {
+      return true;
+    }
+
+    const storedValue = window.localStorage.getItem(AI_ASSIST_STORAGE_KEY);
+    return storedValue === null ? true : storedValue === 'true';
+  });
 
   useEffect(() => {
     loadKeywords();
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(AI_ASSIST_STORAGE_KEY, String(aiAssistEnabled));
+  }, [aiAssistEnabled]);
+
+  useEffect(() => {
+    if (!scanning || scanStartedAt === null) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setElapsedMs(Date.now() - scanStartedAt);
+    }, 500);
+
+    return () => window.clearInterval(timer);
+  }, [scanning, scanStartedAt]);
 
   const activeKeywords = useMemo(
     () => keywords.filter((keyword) => keyword.isActive),
@@ -97,6 +126,9 @@ const ScanTrigger = () => {
   const handleScan = async () => {
     try {
       setScanning(true);
+      const startedAt = Date.now();
+      setScanStartedAt(startedAt);
+      setElapsedMs(0);
       setError(null);
       setNotice(null);
       setScanResult(null);
@@ -104,9 +136,11 @@ const ScanTrigger = () => {
       const result = await scanAPI.triggerScan({
         tagIds: [],
         promptText: promptText.trim() || undefined,
+        aiAssistEnabled,
       });
 
       setScanResult(result);
+      saveRecentScan(result, promptText.trim());
       setNotice(
         result.discoveredUrls.length > 0
           ? `Scan completed with ${result.discoveredUrls.length} discovered URLs.`
@@ -118,6 +152,21 @@ const ScanTrigger = () => {
       setScanning(false);
     }
   };
+
+  const formatDuration = (durationMs: number) => {
+    const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  };
+
+  const liveStep = scanStartedAt === null
+    ? 'Idle'
+    : elapsedMs < 2000
+      ? 'Planning'
+      : elapsedMs < 6000
+        ? 'Searching'
+        : 'Processing';
 
   if (loading) {
     return (
@@ -159,12 +208,65 @@ const ScanTrigger = () => {
         </div>
       )}
 
+      {(scanning || scanResult) && (
+        <div className="ui-panel">
+          <div className="ui-panel-header">
+            <div>
+              <h2>{scanning ? 'Running now' : 'Last run'}</h2>
+              <p>{scanning ? 'Live scan status.' : 'Most recent scan result.'}</p>
+            </div>
+            <span className={`ui-badge ${scanning ? 'warn' : 'success'}`}>
+              {scanning ? 'Live' : 'Done'}
+            </span>
+          </div>
+          <div className="ui-grid-3">
+            <div className="metric-card">
+              <span className="metric-label">Step</span>
+              <strong className="metric-value">{scanning ? liveStep : (scanResult?.aiAssistApplied ? 'AI scan' : 'Standard')}</strong>
+            </div>
+            <div className="metric-card">
+              <span className="metric-label">Elapsed</span>
+              <strong className="metric-value">
+                {scanning ? formatDuration(elapsedMs) : formatDuration(scanResult?.durationMs ?? 0)}
+              </strong>
+            </div>
+            <div className="metric-card">
+              <span className="metric-label">Mode</span>
+              <strong className="metric-value">
+                {scanning
+                  ? aiAssistEnabled ? 'AI On' : 'AI Off'
+                  : scanResult?.aiAssistApplied ? 'AI Used' : scanResult?.aiAssistRequested ? 'AI Fallback' : 'Standard'}
+              </strong>
+            </div>
+          </div>
+          {scanResult?.queriesUsed.length ? (
+            <div className="ui-stack" style={{ marginTop: '12px' }}>
+              <h4 className="ui-table-title">Queries used</h4>
+              <div className="ui-pill-row">
+                {scanResult.queriesUsed.map((query) => (
+                  <span key={query} className="ui-pill">{query}</span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
       <div className="ui-panel">
         <div className="ui-panel-header">
           <div>
             <h2>Brief</h2>
             <p>Blank = active keywords.</p>
           </div>
+          <button
+            type="button"
+            className={aiAssistEnabled ? 'ui-button' : 'ui-button-secondary'}
+            onClick={() => setAiAssistEnabled((value) => !value)}
+            aria-pressed={aiAssistEnabled}
+          >
+            <Power size={14} />
+            AI {aiAssistEnabled ? 'On' : 'Off'}
+          </button>
         </div>
 
         <div className="ui-stack" style={{ padding: '0 16px 16px' }}>
@@ -177,6 +279,14 @@ const ScanTrigger = () => {
             className="ui-textarea"
             style={{ minHeight: '120px', resize: 'vertical' }}
           />
+          <div className="ui-actions" style={{ justifyContent: 'space-between' }}>
+            <span className={`ui-badge ${aiAssistEnabled ? 'success' : 'muted'}`}>
+              AI assist {aiAssistEnabled ? 'on' : 'off'}
+            </span>
+            <span className="ui-badge muted">
+              {aiAssistEnabled ? 'Brief + keywords + AI plan' : 'Brief + keywords only'}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -269,11 +379,26 @@ const ScanTrigger = () => {
               <span className="metric-label">Errors</span>
               <strong className="metric-value">{scanResult.errorCount}</strong>
             </div>
+            <div className="metric-card">
+              <span className="metric-label">Duration</span>
+              <strong className="metric-value">{formatDuration(scanResult.durationMs)}</strong>
+            </div>
           </div>
           <div className="ui-pill-row">
             <span className="ui-pill">Brief: {promptText.trim() || 'Active keywords'}</span>
+            <span className="ui-pill">AI: {scanResult.aiAssistApplied ? 'Used' : scanResult.aiAssistRequested ? 'Fallback' : 'Off'}</span>
             <span className="ui-pill">Keywords: {scanResult.keywordsUsed.join(', ') || 'None'}</span>
           </div>
+          {scanResult.queriesUsed.length > 0 && (
+            <div className="ui-stack" style={{ marginTop: '12px' }}>
+              <h4 className="ui-table-title">Queries used</h4>
+              <div className="ui-pill-row">
+                {scanResult.queriesUsed.map((query) => (
+                  <span key={query} className="ui-pill">{query}</span>
+                ))}
+              </div>
+            </div>
+          )}
           {scanResult.discoveredUrls.length > 0 && (
             <div className="ui-stack" style={{ marginTop: '12px' }}>
               {scanResult.discoveredUrls.slice(0, 5).map((url) => (

@@ -185,11 +185,14 @@ export class ContentScanner implements IContentScanner {
     ): Promise<ScanResult> {
       const scanJobId = this.generateScanJobId();
       const searchTimestamp = new Date();
+      const startTimestamp = Date.now();
       const discoveredUrls = new Set<string>();
+      const executedQueries: string[] = [];
       let errorCount = 0;
       let itemsDiscovered = 0;
       const fallbackStrategy = options.fallbackStrategy ?? 'per-keyword';
       const customQueries = options.customQueries?.filter((query) => query.trim().length > 0) ?? [];
+      const aiAssistRequested = customQueries.length > 0;
 
       // If no keywords provided, get active keywords
       const searchKeywords = keywords.length > 0 ? keywords : await this.getActiveKeywords();
@@ -228,6 +231,7 @@ export class ContentScanner implements IContentScanner {
       if (customQueries.length > 0) {
         for (const query of customQueries) {
           try {
+            executedQueries.push(query);
             const urls = await this.searchWithRetry(query, tagNames);
             await processUrls(urls);
           } catch (error) {
@@ -238,12 +242,13 @@ export class ContentScanner implements IContentScanner {
       } else if (searchKeywords.length > 1) {
         try {
           const combinedKeywordQuery = searchKeywords.join(' ');
+          executedQueries.push(this.buildSearchQuery(combinedKeywordQuery, tagNames));
           const combinedUrls = await this.searchWithRetry(combinedKeywordQuery, tagNames);
 
           if (combinedUrls.length > 0) {
             await processUrls(combinedUrls);
           } else if (fallbackStrategy === 'per-keyword') {
-            await this.executePerKeywordSearch(searchKeywords, tagNames, processUrls, () => {
+            await this.executePerKeywordSearch(searchKeywords, tagNames, executedQueries, processUrls, () => {
               errorCount++;
             });
           }
@@ -251,13 +256,13 @@ export class ContentScanner implements IContentScanner {
           this.logError('executeScan', 'Failed to search combined keyword query', error);
           errorCount++;
           if (fallbackStrategy === 'per-keyword') {
-            await this.executePerKeywordSearch(searchKeywords, tagNames, processUrls, () => {
+            await this.executePerKeywordSearch(searchKeywords, tagNames, executedQueries, processUrls, () => {
               errorCount++;
             });
           }
         }
       } else {
-        await this.executePerKeywordSearch(searchKeywords, tagNames, processUrls, () => {
+        await this.executePerKeywordSearch(searchKeywords, tagNames, executedQueries, processUrls, () => {
           errorCount++;
         });
       }
@@ -279,17 +284,23 @@ export class ContentScanner implements IContentScanner {
         keywordsUsed: searchKeywords,
         selectedTagIds: tagIds,
         errorCount,
+        durationMs: Date.now() - startTimestamp,
+        queriesUsed: Array.from(new Set(executedQueries)),
+        aiAssistRequested,
+        aiAssistApplied: customQueries.length > 0,
       };
     }
 
   private async executePerKeywordSearch(
     keywords: string[],
     tagNames: string[],
+    executedQueries: string[],
     onUrls: (urls: string[]) => Promise<void>,
     onError: () => void
   ): Promise<void> {
     for (const keyword of keywords) {
       try {
+        executedQueries.push(this.buildSearchQuery(keyword, tagNames));
         const urls = await this.searchWithRetry(keyword, tagNames);
         await onUrls(urls);
       } catch (error) {

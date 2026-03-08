@@ -2,6 +2,7 @@ import { Clock3, RefreshCcw } from 'lucide-react';
 import { Fragment, useEffect, useState } from 'react';
 import { logsAPI, savedSearchAPI } from '../services/api';
 import type { SavedSearch, SearchHistoryEntry } from '../types';
+import { getRecentScanByJobId } from '../utils/recentScanStore';
 
 const SearchHistory = () => {
   const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
@@ -32,6 +33,12 @@ const SearchHistory = () => {
   };
 
   const formatTimestamp = (timestamp: string) => new Date(timestamp).toLocaleString();
+  const formatDuration = (durationMs: number) => {
+    const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  };
 
   const getSavedSearchName = (savedSearchId: number | null, version: number | null) => {
     if (!savedSearchId) return null;
@@ -62,7 +69,7 @@ const SearchHistory = () => {
         <div className="page-heading">
           <span className="hero-badge">Runs</span>
           <h1>Run history</h1>
-          <p>Review how each search was scoped: topics, groups, saved search, and output.</p>
+          <p>Review what each scan did, how long it ran, and what it found.</p>
         </div>
         <button type="button" onClick={loadData} className="ui-button-secondary">
           <RefreshCcw size={15} />
@@ -84,93 +91,128 @@ const SearchHistory = () => {
                   <th>Type</th>
                   <th>Job</th>
                   <th>Topics</th>
-                  <th>Groups</th>
                   <th>Found</th>
+                  <th>Duration</th>
                   <th>Saved Search</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {history.map((entry) => (
-                  <Fragment key={entry.searchId}>
-                    <tr>
-                      <td>{formatTimestamp(entry.searchTimestamp)}</td>
-                      <td>{renderExecutionTypeBadge(entry.execution_type)}</td>
-                      <td style={{ fontFamily: 'monospace', color: 'var(--text-soft)' }}>
-                        {entry.scanJobId.substring(0, 8)}...
-                      </td>
-                      <td title={entry.keywordsUsed.join(', ')}>
-                        {entry.keywordsUsed.length > 0
-                          ? `${entry.keywordsUsed.length} topic${entry.keywordsUsed.length > 1 ? 's' : ''}`
-                          : 'None'}
-                      </td>
-                      <td>
-                        {entry.selectedTagIds.length > 0
-                          ? `${entry.selectedTagIds.length} group item${entry.selectedTagIds.length > 1 ? 's' : ''}`
-                          : 'All groups'}
-                      </td>
-                      <td>
-                        <span className="ui-badge success">{entry.itemsDiscovered}</span>
-                      </td>
-                      <td>
-                        {entry.savedSearchId
-                          ? getSavedSearchName(entry.savedSearchId, entry.savedSearchVersion)
-                          : '-'}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedRows((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(entry.searchId)) {
-                                next.delete(entry.searchId);
-                              } else {
-                                next.add(entry.searchId);
-                              }
-                              return next;
-                            })
-                          }
-                          className="ui-inline-button"
-                        >
-                          {expandedRows.has(entry.searchId) ? 'Hide' : 'Details'}
-                        </button>
-                      </td>
-                    </tr>
-                    {expandedRows.has(entry.searchId) && (
+                {history.map((entry) => {
+                  const recentScan = getRecentScanByJobId(entry.scanJobId);
+
+                  return (
+                    <Fragment key={entry.searchId}>
                       <tr>
-                        <td colSpan={8}>
-                          <div className="ui-note" style={{ margin: '12px' }}>
-                            <div>
-                              <h4 className="ui-table-title">Full job ID</h4>
-                              <p style={{ fontFamily: 'monospace', color: 'var(--text-soft)' }}>{entry.scanJobId}</p>
-                            </div>
-                            {entry.keywordsUsed.length > 0 && (
-                              <div>
-                                <h4 className="ui-table-title">Topics</h4>
-                                <div className="ui-pill-row" style={{ marginTop: '8px' }}>
-                                  {entry.keywordsUsed.map((keyword, index) => (
-                                    <span key={index} className="ui-pill">{keyword}</span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {entry.selectedTagIds.length > 0 && (
-                              <div>
-                                <h4 className="ui-table-title">Group IDs</h4>
-                                <div className="ui-pill-row" style={{ marginTop: '8px' }}>
-                                  {entry.selectedTagIds.map((tagId) => (
-                                    <span key={tagId} className="ui-pill">Group #{tagId}</span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
+                        <td>{formatTimestamp(entry.searchTimestamp)}</td>
+                        <td>{renderExecutionTypeBadge(entry.execution_type)}</td>
+                        <td style={{ fontFamily: 'monospace', color: 'var(--text-soft)' }}>
+                          {entry.scanJobId.substring(0, 8)}...
+                        </td>
+                        <td title={entry.keywordsUsed.join(', ')}>
+                          {entry.keywordsUsed.length > 0
+                            ? `${entry.keywordsUsed.length} topic${entry.keywordsUsed.length > 1 ? 's' : ''}`
+                            : 'None'}
+                        </td>
+                        <td>
+                          <span className="ui-badge success">{entry.itemsDiscovered}</span>
+                        </td>
+                        <td>{recentScan ? formatDuration(recentScan.durationMs) : '-'}</td>
+                        <td>
+                          {entry.savedSearchId
+                            ? getSavedSearchName(entry.savedSearchId, entry.savedSearchVersion)
+                            : '-'}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedRows((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(entry.searchId)) {
+                                  next.delete(entry.searchId);
+                                } else {
+                                  next.add(entry.searchId);
+                                }
+                                return next;
+                              })
+                            }
+                            className="ui-inline-button"
+                          >
+                            {expandedRows.has(entry.searchId) ? 'Hide' : 'Details'}
+                          </button>
                         </td>
                       </tr>
-                    )}
-                  </Fragment>
-                ))}
+                      {expandedRows.has(entry.searchId) && (
+                        <tr>
+                          <td colSpan={8}>
+                            <div className="ui-note" style={{ margin: '12px' }}>
+                              <div>
+                                <h4 className="ui-table-title">Full job ID</h4>
+                                <p style={{ fontFamily: 'monospace', color: 'var(--text-soft)' }}>{entry.scanJobId}</p>
+                              </div>
+                              {recentScan && (
+                                <>
+                                  <div>
+                                    <h4 className="ui-table-title">Mode</h4>
+                                    <div className="ui-pill-row" style={{ marginTop: '8px' }}>
+                                      <span className="ui-pill">
+                                        {recentScan.aiAssistApplied
+                                          ? 'AI used'
+                                          : recentScan.aiAssistRequested
+                                            ? 'AI fallback'
+                                            : 'Standard'}
+                                      </span>
+                                      <span className="ui-pill">Duration: {formatDuration(recentScan.durationMs)}</span>
+                                    </div>
+                                  </div>
+                                  {recentScan.promptText && (
+                                    <div>
+                                      <h4 className="ui-table-title">Brief</h4>
+                                      <p>{recentScan.promptText}</p>
+                                    </div>
+                                  )}
+                                  {recentScan.queriesUsed.length > 0 && (
+                                    <div>
+                                      <h4 className="ui-table-title">Queries used</h4>
+                                      <div className="ui-pill-row" style={{ marginTop: '8px' }}>
+                                        {recentScan.queriesUsed.map((query) => (
+                                          <span key={query} className="ui-pill">{query}</span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {recentScan.discoveredUrls.length > 0 && (
+                                    <div>
+                                      <h4 className="ui-table-title">Found URLs</h4>
+                                      <div className="ui-stack" style={{ marginTop: '8px' }}>
+                                        {recentScan.discoveredUrls.slice(0, 8).map((url) => (
+                                          <a key={url} href={url} target="_blank" rel="noreferrer" className="signal-meta">
+                                            {url}
+                                          </a>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                              {entry.keywordsUsed.length > 0 && (
+                                <div>
+                                  <h4 className="ui-table-title">Topics</h4>
+                                  <div className="ui-pill-row" style={{ marginTop: '8px' }}>
+                                    {entry.keywordsUsed.map((keyword, index) => (
+                                      <span key={index} className="ui-pill">{keyword}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

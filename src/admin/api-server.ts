@@ -378,6 +378,7 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
     savedSearchId,
     keywordsUsed,
     promptText,
+    aiAssistEnabled,
   } = req.body;
   const normalizedTagIds = Array.isArray(tagIds) ? tagIds : selectedTagIds;
   
@@ -396,6 +397,11 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
     return;
   }
 
+  if (aiAssistEnabled !== undefined && typeof aiAssistEnabled !== 'boolean') {
+    res.status(400).json({ error: 'aiAssistEnabled must be a boolean when provided' });
+    return;
+  }
+
   const normalizedKeywords = Array.isArray(keywordsUsed)
     ? keywordsUsed
         .map((keyword) => (typeof keyword === 'string' ? keyword.trim() : ''))
@@ -404,6 +410,8 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
 
   let promptKeywords: string[] = [];
   let customQueries: string[] = [];
+  let aiAssistWasRequested = aiAssistEnabled !== false && typeof promptText === 'string' && promptText.trim().length > 0;
+  let aiAssistWasApplied = false;
   if (typeof promptText === 'string' && promptText.trim().length > 0) {
     const parsedPrompt = parseScanPrompt(promptText);
     if ('error' in parsedPrompt) {
@@ -413,10 +421,14 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
 
     promptKeywords = parsedPrompt.keywords;
 
-    const aiPlan = await localAiService.buildQueryPlan(promptText, promptKeywords);
+    const aiPlan =
+      aiAssistEnabled === false
+        ? null
+        : await localAiService.buildQueryPlan(promptText, promptKeywords);
     if (aiPlan) {
       promptKeywords = aiPlan.keywords.length > 0 ? aiPlan.keywords : promptKeywords;
       customQueries = aiPlan.queries;
+      aiAssistWasApplied = aiPlan.queries.length > 0;
     }
   }
   
@@ -441,7 +453,11 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
       : undefined,
   );
   
-  res.json(result);
+  res.json({
+    ...result,
+    aiAssistRequested: aiAssistWasRequested,
+    aiAssistApplied: aiAssistWasApplied,
+  });
 }));
 
 // ============================================================================

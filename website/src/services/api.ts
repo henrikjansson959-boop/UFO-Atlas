@@ -141,6 +141,7 @@ export const scanAPI = {
     savedSearchId?: number;
     keywordsUsed?: string[];
     promptText?: string;
+    aiAssistEnabled?: boolean;
   }): Promise<ScanResult> => {
     return apiCall<ScanResult>('/scan/trigger', {
       method: 'POST',
