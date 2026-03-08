@@ -84,7 +84,7 @@ describe('ContentScanner', () => {
   let scanner: ContentScanner;
   let mockStorage: MockStorageService;
   let mockExtractor: MockContentExtractor;
-  let mockSearchProvider: jest.Mock<Promise<string[]>, [string]>;
+  let mockSearchProvider: jest.Mock<Promise<Array<{ url: string; title?: string; description?: string }>>, [string]>;
 
   beforeEach(() => {
     mockStorage = new MockStorageService();
@@ -181,7 +181,7 @@ describe('ContentScanner', () => {
 
     it('should process URLs with content extractor when set', async () => {
       scanner.setContentExtractor(mockExtractor as any);
-      mockSearchProvider.mockResolvedValue(['https://example.com/ufo-story']);
+      mockSearchProvider.mockResolvedValue([{ url: 'https://example.com/ufo-story' }]);
 
       const result = await scanner.executeScan(['UFO'], [1]);
 
@@ -192,9 +192,20 @@ describe('ContentScanner', () => {
 
     it('should filter out irrelevant 3D and motorsport URLs', async () => {
       mockSearchProvider.mockResolvedValue([
-        'https://www.daz3d.com/dforce-synth-swimsuit-texture-add-on',
-        'https://www.formula1.com/en/latest/article.aztec-grand-prix-rumour.123.html',
-        'https://example.com/aztec-ufo-crash-site',
+        { url: 'https://www.daz3d.com/dforce-synth-swimsuit-texture-add-on' },
+        { url: 'https://www.formula1.com/en/latest/article.aztec-grand-prix-rumour.123.html' },
+        { url: 'https://example.com/aztec-ufo-crash-site' },
+      ]);
+
+      const result = await scanner.executeScan(['Aztec', 'UFO'], []);
+
+      expect(result.discoveredUrls).toEqual(['https://example.com/aztec-ufo-crash-site']);
+    });
+
+    it('should filter out blocked file-sharing domains', async () => {
+      mockSearchProvider.mockResolvedValue([
+        { url: 'https://mypikpak.com/s/VOe5dA6PN7yKilzXxzw183ufo2' },
+        { url: 'https://example.com/aztec-ufo-crash-site' },
       ]);
 
       const result = await scanner.executeScan(['Aztec', 'UFO'], []);
@@ -204,14 +215,47 @@ describe('ContentScanner', () => {
 
     it('should filter out unsafe adult or drug-related URLs', async () => {
       mockSearchProvider.mockResolvedValue([
-        'https://example.com/ufo-disclosure-report',
-        'https://example.com/ufo-sex-cult-rumor',
-        'https://example.com/alien-drug-cartel-story',
+        { url: 'https://example.com/ufo-disclosure-report' },
+        { url: 'https://example.com/ufo-sex-cult-rumor' },
+        { url: 'https://example.com/alien-drug-cartel-story' },
       ]);
 
       const result = await scanner.executeScan(['UFO'], []);
 
       expect(result.discoveredUrls).toEqual(['https://example.com/ufo-disclosure-report']);
+    });
+
+    it('should reject generic pages that match terms but lack UFO context', async () => {
+      mockSearchProvider.mockResolvedValue([
+        { url: 'https://www.britannica.com/topic/conspiracy-theory' },
+        { url: 'https://www.history.com/articles/aztecs' },
+        { url: 'https://example.com/aztec-ufo-crash-site' },
+      ]);
+
+      const result = await scanner.executeScan(['ufo', 'conspiracy', 'aztec'], []);
+
+      expect(result.discoveredUrls).toEqual(['https://example.com/aztec-ufo-crash-site']);
+    });
+
+    it('should skip per-keyword fallback when combined-only mode is requested', async () => {
+      mockSearchProvider.mockImplementation(async (query) => {
+        if (query.includes('ufo conspiracy aztec')) {
+          return [];
+        }
+
+        return [{ url: 'https://www.history.com/articles/aztecs' }];
+      });
+
+      const result = await scanner.executeScan(
+        ['ufo', 'conspiracy', 'aztec'],
+        [],
+        undefined,
+        undefined,
+        { fallbackStrategy: 'none' },
+      );
+
+      expect(result.discoveredUrls).toEqual([]);
+      expect(mockSearchProvider).toHaveBeenCalledTimes(1);
     });
 
     it('should include saved search metadata when provided', async () => {
@@ -317,7 +361,7 @@ describe('ContentScanner', () => {
 
       // Setup: Set content extractor
       scanner.setContentExtractor(mockExtractor as any);
-      mockSearchProvider.mockResolvedValue(['https://example.com/ufo-story']);
+      mockSearchProvider.mockResolvedValue([{ url: 'https://example.com/ufo-story' }]);
 
       await scanner.executeScan(['UFO'], [1]);
 

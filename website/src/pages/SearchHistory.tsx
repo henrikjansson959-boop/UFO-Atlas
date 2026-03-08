@@ -62,7 +62,7 @@ const SearchHistory = () => {
         <div className="page-heading">
           <span className="hero-badge">Runs</span>
           <h1>Run history</h1>
-          <p>Review how each scan was scoped: terms, labels, source recipe, and output.</p>
+          <p>Review how each search was scoped: topics, groups, saved search, and output.</p>
         </div>
         <button type="button" onClick={loadData} className="ui-button-secondary">
           <RefreshCcw size={15} />
@@ -83,10 +83,10 @@ const SearchHistory = () => {
                   <th>Timestamp</th>
                   <th>Type</th>
                   <th>Job</th>
-                  <th>Terms</th>
-                  <th>Labels</th>
+                  <th>Topics</th>
+                  <th>Groups</th>
                   <th>Found</th>
-                  <th>Recipe</th>
+                  <th>Saved Search</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -101,13 +101,13 @@ const SearchHistory = () => {
                       </td>
                       <td title={entry.keywordsUsed.join(', ')}>
                         {entry.keywordsUsed.length > 0
-                          ? `${entry.keywordsUsed.length} keyword${entry.keywordsUsed.length > 1 ? 's' : ''}`
+                          ? `${entry.keywordsUsed.length} topic${entry.keywordsUsed.length > 1 ? 's' : ''}`
                           : 'None'}
                       </td>
                       <td>
                         {entry.selectedTagIds.length > 0
-                          ? `${entry.selectedTagIds.length} tag${entry.selectedTagIds.length > 1 ? 's' : ''}`
-                          : 'All tags'}
+                          ? `${entry.selectedTagIds.length} group item${entry.selectedTagIds.length > 1 ? 's' : ''}`
+                          : 'All groups'}
                       </td>
                       <td>
                         <span className="ui-badge success">{entry.itemsDiscovered}</span>
@@ -147,7 +147,7 @@ const SearchHistory = () => {
                             </div>
                             {entry.keywordsUsed.length > 0 && (
                               <div>
-                                <h4 className="ui-table-title">Terms</h4>
+                                <h4 className="ui-table-title">Topics</h4>
                                 <div className="ui-pill-row" style={{ marginTop: '8px' }}>
                                   {entry.keywordsUsed.map((keyword, index) => (
                                     <span key={index} className="ui-pill">{keyword}</span>
@@ -157,10 +157,10 @@ const SearchHistory = () => {
                             )}
                             {entry.selectedTagIds.length > 0 && (
                               <div>
-                                <h4 className="ui-table-title">Label IDs</h4>
+                                <h4 className="ui-table-title">Group IDs</h4>
                                 <div className="ui-pill-row" style={{ marginTop: '8px' }}>
                                   {entry.selectedTagIds.map((tagId) => (
-                                    <span key={tagId} className="ui-pill">Label #{tagId}</span>
+                                    <span key={tagId} className="ui-pill">Group #{tagId}</span>
                                   ))}
                                 </div>
                               </div>

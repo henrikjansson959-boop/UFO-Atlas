@@ -296,6 +296,20 @@ export class StorageService implements IStorageService {
   }
 
   /**
+   * Delete a keyword
+   */
+  async deleteKeyword(keywordId: number): Promise<void> {
+    return this.withRetry(async () => {
+      const { error } = await this.client
+        .from('keyword_config')
+        .delete()
+        .eq('keyword_id', keywordId);
+
+      if (error) throw error;
+    }, 'deleteKeyword');
+  }
+
+  /**
    * Activate a keyword
    * Validates: Requirements 6.2
    */

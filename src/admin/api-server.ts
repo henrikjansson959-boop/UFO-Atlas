@@ -10,6 +10,7 @@ import { ContentFilters } from '../types';
 import { CronValidator } from '../scheduler/cronValidator';
 import { DataValidator } from '../validator/DataValidator';
 import { createScheduleRoutes } from './scheduleRoutes';
+import { parseScanPrompt } from '../scanner/ScanPrompt';
 
 // Load environment variables
 dotenv.config();
@@ -218,6 +219,18 @@ app.patch('/api/keywords/:id/toggle', asyncHandler(async (req: Request, res: Res
   res.json({ success: true, message: `Keyword ${isActive ? 'activated' : 'deactivated'} successfully` });
 }));
 
+app.delete('/api/keywords/:id', asyncHandler(async (req: Request, res: Response) => {
+  const keywordId = parseInt(req.params.id, 10);
+
+  if (isNaN(keywordId)) {
+    res.status(400).json({ error: 'Invalid keyword ID' });
+    return;
+  }
+
+  await storageService.deleteKeyword(keywordId);
+  res.json({ success: true, message: 'Keyword deleted successfully' });
+}));
+
 // ============================================================================
 // TAG MANAGEMENT ENDPOINTS
 // ============================================================================
@@ -359,6 +372,7 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
     selectedTagIds,
     savedSearchId,
     keywordsUsed,
+    promptText,
   } = req.body;
   const normalizedTagIds = Array.isArray(tagIds) ? tagIds : selectedTagIds;
   
@@ -372,22 +386,42 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
     return;
   }
 
+  if (promptText !== undefined && typeof promptText !== 'string') {
+    res.status(400).json({ error: 'promptText must be a string when provided' });
+    return;
+  }
+
   const normalizedKeywords = Array.isArray(keywordsUsed)
     ? keywordsUsed
         .map((keyword) => (typeof keyword === 'string' ? keyword.trim() : ''))
         .filter((keyword) => keyword.length > 0)
     : [];
+
+  let promptKeywords: string[] = [];
+  if (typeof promptText === 'string' && promptText.trim().length > 0) {
+    const parsedPrompt = parseScanPrompt(promptText);
+    if ('error' in parsedPrompt) {
+      res.status(parsedPrompt.statusCode).json({ error: parsedPrompt.error });
+      return;
+    }
+
+    promptKeywords = parsedPrompt.keywords;
+  }
   
   // Get active keywords
-  const keywords = normalizedKeywords.length > 0
-    ? normalizedKeywords
-    : await contentScanner.getActiveKeywords();
+  const keywords = promptKeywords.length > 0
+    ? promptKeywords
+    : normalizedKeywords.length > 0
+      ? normalizedKeywords
+      : await contentScanner.getActiveKeywords();
   
   // Execute scan
   const result = await contentScanner.executeScan(
     keywords,
     normalizedTagIds,
-    savedSearchId
+    savedSearchId,
+    undefined,
+    promptKeywords.length > 0 ? { fallbackStrategy: 'none' } : undefined,
   );
   
   res.json(result);

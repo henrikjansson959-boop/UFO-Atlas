@@ -1,17 +1,18 @@
 import {
   ContentScanner as IContentScanner,
   ScanResult,
+  ScanExecutionOptions,
   StorageService,
   ContentExtractor,
 } from '../types';
-
-type SearchProvider = (query: string) => Promise<string[]>;
 
 type SearchCandidate = {
   url: string;
   title?: string;
   description?: string;
 };
+
+type SearchProvider = (query: string) => Promise<SearchCandidate[]>;
 
 const UFO_FOCUS_TERMS = [
   'ufo',
@@ -34,6 +35,29 @@ const UFO_FOCUS_TERMS = [
   'aatip',
   'aawsap',
   'grusch',
+  'whistleblower',
+  'crash retrieval',
+  'reverse engineering',
+];
+
+const EXPLICIT_UFO_CONTEXT_TERMS = [
+  'ufo',
+  'ufos',
+  'uap',
+  'uaps',
+  'alien',
+  'aliens',
+  'extraterrestrial',
+  'extraterrestrials',
+  'flying saucer',
+  'flying saucers',
+  'nhi',
+  'non-human intelligence',
+  'abduction',
+  'abductions',
+  'area 51',
+  'aatip',
+  'aawsap',
   'whistleblower',
   'crash retrieval',
   'reverse engineering',
@@ -103,6 +127,7 @@ const BLOCKED_SAFETY_TERMS = [
 const BLOCKED_DOMAINS = [
   'daz3d.com',
   'formula1.com',
+  'mypikpak.com',
 ];
 
 /**
@@ -155,13 +180,15 @@ export class ContentScanner implements IContentScanner {
       keywords: string[],
       tagIds: number[],
       savedSearchId?: number,
-      savedSearchVersion?: number
+      savedSearchVersion?: number,
+      options: ScanExecutionOptions = {}
     ): Promise<ScanResult> {
       const scanJobId = this.generateScanJobId();
       const searchTimestamp = new Date();
       const discoveredUrls = new Set<string>();
       let errorCount = 0;
       let itemsDiscovered = 0;
+      const fallbackStrategy = options.fallbackStrategy ?? 'per-keyword';
 
       // If no keywords provided, get active keywords
       const searchKeywords = keywords.length > 0 ? keywords : await this.getActiveKeywords();
@@ -204,7 +231,7 @@ export class ContentScanner implements IContentScanner {
 
           if (combinedUrls.length > 0) {
             await processUrls(combinedUrls);
-          } else {
+          } else if (fallbackStrategy === 'per-keyword') {
             await this.executePerKeywordSearch(searchKeywords, tagNames, processUrls, () => {
               errorCount++;
             });
@@ -212,9 +239,11 @@ export class ContentScanner implements IContentScanner {
         } catch (error) {
           this.logError('executeScan', 'Failed to search combined keyword query', error);
           errorCount++;
-          await this.executePerKeywordSearch(searchKeywords, tagNames, processUrls, () => {
-            errorCount++;
-          });
+          if (fallbackStrategy === 'per-keyword') {
+            await this.executePerKeywordSearch(searchKeywords, tagNames, processUrls, () => {
+              errorCount++;
+            });
+          }
         }
       } else {
         await this.executePerKeywordSearch(searchKeywords, tagNames, processUrls, () => {
@@ -329,15 +358,11 @@ export class ContentScanner implements IContentScanner {
   private async searchInternet(keyword: string, tagNames: string[]): Promise<string[]> {
     const searchQuery = this.buildSearchQuery(keyword, tagNames);
     console.log(`[ContentScanner] Searching for: ${searchQuery}`);
-    const urls = await this.searchProvider(searchQuery);
-    return this.filterAndRankUrls(
-      urls.map((url) => ({ url })),
-      keyword,
-      tagNames,
-    );
+    const candidates = await this.searchProvider(searchQuery);
+    return this.filterAndRankUrls(candidates, keyword, tagNames);
   }
 
-  private async fetchSearchResults(searchQuery: string): Promise<string[]> {
+  private async fetchSearchResults(searchQuery: string): Promise<SearchCandidate[]> {
     const encodedQuery = encodeURIComponent(searchQuery);
     const url =
       `https://www.bing.com/search?q=${encodedQuery}&format=rss&setlang=en-US&mkt=en-US`;
@@ -377,8 +402,7 @@ export class ContentScanner implements IContentScanner {
         };
       })
       .filter((candidate): candidate is SearchCandidate => candidate !== null);
-
-    return this.filterAndRankUrls(candidates, searchQuery, []);
+    return candidates;
   }
 
   /**
@@ -443,6 +467,11 @@ export class ContentScanner implements IContentScanner {
     }
 
     if (this.containsAnyTerm(candidateText, BLOCKED_SAFETY_TERMS)) {
+      return -100;
+    }
+
+    const queryRequiresExplicitUfo = this.containsAnyTerm(queryText, EXPLICIT_UFO_CONTEXT_TERMS);
+    if (queryRequiresExplicitUfo && !this.containsAnyTerm(candidateText, EXPLICIT_UFO_CONTEXT_TERMS)) {
       return -100;
     }
 

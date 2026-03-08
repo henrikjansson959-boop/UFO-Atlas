@@ -81,6 +81,10 @@ export interface ScanResult {
   errorCount: number;
 }
 
+export interface ScanExecutionOptions {
+  fallbackStrategy?: 'per-keyword' | 'none';
+}
+
 export interface ValidationResult {
   isValid: boolean;
   errors: string[];
@@ -132,7 +136,8 @@ export interface ContentScanner {
     keywords: string[],
     tagIds: number[],
     savedSearchId?: number,
-    savedSearchVersion?: number
+    savedSearchVersion?: number,
+    options?: ScanExecutionOptions
   ): Promise<ScanResult>;
   
   /**
@@ -199,6 +204,7 @@ export interface StorageService {
    * Manage keywords
    */
   addKeyword(keyword: string): Promise<number>;
+  deleteKeyword(keywordId: number): Promise<void>;
   activateKeyword(keywordId: number): Promise<void>;
   deactivateKeyword(keywordId: number): Promise<void>;
   getActiveKeywords(): Promise<Keyword[]>;

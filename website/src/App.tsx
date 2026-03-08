@@ -2,13 +2,11 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import AdminLayout from './components/AdminLayout';
 import { ThemeProvider } from './components/ThemeContext';
 import ErrorLogs from './pages/ErrorLogs';
-import KeywordManagement from './pages/KeywordManagement';
 import LandingPage from './pages/LandingPage';
 import ReviewQueue from './pages/ReviewQueue';
 import SavedSearches from './pages/SavedSearches';
 import ScanTrigger from './pages/ScanTrigger';
 import SearchHistory from './pages/SearchHistory';
-import TagManagement from './pages/TagManagement';
 
 function App() {
   return (
@@ -21,8 +19,8 @@ function App() {
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<Navigate to="/admin/review-queue" replace />} />
               <Route path="review-queue" element={<ReviewQueue />} />
-              <Route path="keywords" element={<KeywordManagement />} />
-              <Route path="tags" element={<TagManagement />} />
+              <Route path="keywords" element={<Navigate to="/admin/scan" replace />} />
+              <Route path="tags" element={<Navigate to="/admin/scan" replace />} />
               <Route path="scan" element={<ScanTrigger />} />
               <Route path="saved-searches" element={<SavedSearches />} />
               <Route path="history" element={<SearchHistory />} />

@@ -93,6 +93,12 @@ export const keywordAPI = {
     });
   },
 
+  deleteKeyword: (keywordId: number): Promise<void> => {
+    return apiCall<void>(`/keywords/${keywordId}`, {
+      method: 'DELETE',
+    });
+  },
+
   toggleKeyword: (keywordId: number, isActive: boolean): Promise<void> => {
     return apiCall<void>(`/keywords/${keywordId}/toggle`, {
       method: 'PATCH',
@@ -130,14 +136,15 @@ export const tagAPI = {
 
 // Scan Trigger API
 export const scanAPI = {
-  triggerScan: (
-    tagIds: number[],
-    savedSearchId?: number,
-    keywordsUsed?: string[]
-  ): Promise<ScanResult> => {
+  triggerScan: (payload: {
+    tagIds: number[];
+    savedSearchId?: number;
+    keywordsUsed?: string[];
+    promptText?: string;
+  }): Promise<ScanResult> => {
     return apiCall<ScanResult>('/scan/trigger', {
       method: 'POST',
-      body: JSON.stringify({ tagIds, savedSearchId, keywordsUsed }),
+      body: JSON.stringify(payload),
     });
   },
 };

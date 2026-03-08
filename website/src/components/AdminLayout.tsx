@@ -1,23 +1,22 @@
-import { BookOpen, Database, History, LayoutDashboard, Moon, Radar, Search, Sun, Tags, TriangleAlert } from 'lucide-react';
+import { Database, History, LayoutDashboard, Moon, Radar, Search, Sun, TriangleAlert } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useTheme } from './ThemeContext';
 
-const navItems = [
+const primaryNavItems = [
   { path: '/admin/review-queue', label: 'Queue', icon: LayoutDashboard },
   { path: '/admin/scan', label: 'Scan', icon: Radar },
-  { path: '/admin/saved-searches', label: 'Saved', icon: Search },
-  { path: '/admin/keywords', label: 'Terms', icon: BookOpen },
-  { path: '/admin/tags', label: 'Labels', icon: Tags },
   { path: '/admin/history', label: 'Runs', icon: History },
   { path: '/admin/logs', label: 'Logs', icon: TriangleAlert },
 ] as const;
 
+const setupNavItems = [
+  { path: '/admin/saved-searches', label: 'Saved', icon: Search },
+] as const;
+
 const routeTitles: Record<string, string> = {
   '/admin/review-queue': 'Review Queue',
-  '/admin/scan': 'Scan Brief',
+  '/admin/scan': 'Scan',
   '/admin/saved-searches': 'Saved Searches',
-  '/admin/keywords': 'Term Library',
-  '/admin/tags': 'Review Labels',
   '/admin/history': 'Run History',
   '/admin/logs': 'Error Logs',
 };
@@ -48,7 +47,7 @@ const AdminLayout = () => {
           </div>
 
           <nav className="admin-nav">
-            {navItems.map((item) => {
+            {primaryNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
 
@@ -66,6 +65,34 @@ const AdminLayout = () => {
               );
             })}
           </nav>
+
+          <div className="ui-note" style={{ marginTop: '8px' }}>
+            <div className="ui-panel-header">
+              <div>
+                <h3>Optional setup</h3>
+                <p>Only use these when you want to tune the scan system.</p>
+              </div>
+            </div>
+            <div className="ui-stack" style={{ marginTop: '10px' }}>
+              {setupNavItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.path;
+
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`admin-nav-item ${isActive ? 'is-active' : ''}`}
+                  >
+                    <div className="admin-nav-icon">
+                      <Icon size={16} />
+                    </div>
+                    <strong>{item.label}</strong>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="admin-status-grid">
             <div className="metric-card">
