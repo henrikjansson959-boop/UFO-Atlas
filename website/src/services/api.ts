@@ -9,6 +9,18 @@ import type {
   ScanResult,
 } from '../types';
 
+type SearchHistoryApiEntry = {
+  search_id: number;
+  scan_job_id: string;
+  search_timestamp: string;
+  keywords_used: string[];
+  selected_tag_ids: number[];
+  saved_search_id: number | null;
+  saved_search_version: number | null;
+  items_discovered: number;
+  execution_type: 'manual' | 'scheduled';
+};
+
 // API base URL - will be configured based on environment
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
 
@@ -183,9 +195,29 @@ export const logsAPI = {
     return apiCall<ErrorLog[]>(`/error-logs${query}`);
   },
 
-  getSearchHistory: (limit?: number): Promise<SearchHistoryEntry[]> => {
+  getSearchHistory: async (limit?: number): Promise<SearchHistoryEntry[]> => {
     const query = limit ? `?limit=${limit}` : '';
-    return apiCall<SearchHistoryEntry[]>(`/search-history${query}`);
+    const entries = await apiCall<Array<SearchHistoryEntry | SearchHistoryApiEntry>>(
+      `/search-history${query}`,
+    );
+
+    return entries.map((entry) => {
+      if ('searchId' in entry) {
+        return entry;
+      }
+
+      return {
+        searchId: entry.search_id,
+        scanJobId: entry.scan_job_id,
+        searchTimestamp: entry.search_timestamp,
+        keywordsUsed: entry.keywords_used,
+        selectedTagIds: entry.selected_tag_ids,
+        savedSearchId: entry.saved_search_id,
+        savedSearchVersion: entry.saved_search_version,
+        itemsDiscovered: entry.items_discovered,
+        execution_type: entry.execution_type,
+      };
+    });
   },
 };
 
