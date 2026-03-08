@@ -1,5 +1,5 @@
 import { BookPlus, Power, RefreshCcw } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { keywordAPI } from '../services/api';
 import type { Keyword } from '../types';
 
@@ -7,8 +7,10 @@ const KeywordManagement = () => {
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [newKeyword, setNewKeyword] = useState('');
   const [addingKeyword, setAddingKeyword] = useState(false);
+  const [busyKeywordId, setBusyKeywordId] = useState<number | null>(null);
 
   useEffect(() => {
     loadKeywords();
@@ -18,6 +20,7 @@ const KeywordManagement = () => {
     try {
       setLoading(true);
       setError(null);
+      setNotice(null);
       const data = await keywordAPI.getKeywords();
       setKeywords(data);
     } catch (err) {
@@ -27,20 +30,23 @@ const KeywordManagement = () => {
     }
   };
 
-  const handleAddKeyword = async (event: React.FormEvent) => {
+  const handleAddKeyword = async (event: FormEvent) => {
     event.preventDefault();
     if (!newKeyword.trim()) {
-      alert('Please enter a keyword');
+      setError('Enter a keyword.');
       return;
     }
 
     try {
       setAddingKeyword(true);
+      setError(null);
+      setNotice(null);
       await keywordAPI.addKeyword(newKeyword.trim());
       setNewKeyword('');
       await loadKeywords();
+      setNotice('Keyword added.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to add keyword');
+      setError(err instanceof Error ? err.message : 'Failed to add keyword');
     } finally {
       setAddingKeyword(false);
     }
@@ -48,14 +54,19 @@ const KeywordManagement = () => {
 
   const handleToggleKeyword = async (keywordId: number, currentStatus: boolean) => {
     try {
+      setBusyKeywordId(keywordId);
+      setError(null);
       await keywordAPI.toggleKeyword(keywordId, !currentStatus);
       setKeywords((items) =>
         items.map((keyword) =>
           keyword.keywordId === keywordId ? { ...keyword, isActive: !currentStatus } : keyword,
         ),
       );
+      setNotice(!currentStatus ? 'Keyword activated.' : 'Keyword paused.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to toggle keyword');
+      setError(err instanceof Error ? err.message : 'Failed to toggle keyword');
+    } finally {
+      setBusyKeywordId(null);
     }
   };
 
@@ -76,9 +87,9 @@ const KeywordManagement = () => {
     <div className="ui-stack">
       <div className="page-header">
         <div className="page-heading">
-          <span className="hero-badge">Crawler input set</span>
-          <h1>Keyword management</h1>
-          <p>Control which keywords are active for scan execution and monitor their last scan timestamps.</p>
+          <span className="hero-badge">Keywords</span>
+          <h1>Keyword control</h1>
+          <p>Keep the active scan terms tight.</p>
         </div>
         <button type="button" onClick={loadKeywords} className="ui-button-secondary">
           <RefreshCcw size={15} />
@@ -86,11 +97,13 @@ const KeywordManagement = () => {
         </button>
       </div>
 
+      {notice && <div className="ui-note"><p>{notice}</p></div>}
+
       <section className="ui-panel">
         <div className="ui-panel-header">
           <div>
             <h2>Add keyword</h2>
-            <p>New terms become available immediately to saved searches and manual scans.</p>
+            <p>Available immediately.</p>
           </div>
         </div>
         <form onSubmit={handleAddKeyword} className="ui-actions">
@@ -138,9 +151,10 @@ const KeywordManagement = () => {
                       type="button"
                       onClick={() => handleToggleKeyword(keyword.keywordId, keyword.isActive)}
                       className={keyword.isActive ? 'ui-button-danger' : 'ui-button-secondary'}
+                      disabled={busyKeywordId === keyword.keywordId}
                     >
                       <Power size={15} />
-                      {keyword.isActive ? 'Deactivate' : 'Activate'}
+                      {busyKeywordId === keyword.keywordId ? 'Updating...' : keyword.isActive ? 'Pause' : 'Activate'}
                     </button>
                   </td>
                 </tr>

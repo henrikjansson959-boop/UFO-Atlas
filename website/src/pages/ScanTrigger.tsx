@@ -13,6 +13,7 @@ const ScanTrigger = () => {
   const [tagGroups, setTagGroups] = useState<TagGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set());
   const [keywordInput, setKeywordInput] = useState('');
@@ -27,6 +28,7 @@ const ScanTrigger = () => {
     try {
       setLoading(true);
       setError(null);
+      setNotice(null);
       const data = await tagAPI.getTagGroups();
       setTagGroups(data);
       setExpandedGroups(new Set(data.map((group) => group.tagGroupId)));
@@ -65,14 +67,20 @@ const ScanTrigger = () => {
     try {
       setScanning(true);
       setError(null);
+      setNotice(null);
       setScanResult(null);
       const manualKeywords = parseKeywordInput(keywordInput);
       const result = await scanAPI.triggerScan(
         Array.from(selectedTagIds),
         undefined,
-        manualKeywords.length > 0 ? manualKeywords : undefined
+        manualKeywords.length > 0 ? manualKeywords : undefined,
       );
       setScanResult(result);
+      setNotice(
+        result.discoveredUrls.length > 0
+          ? `Scan completed with ${result.discoveredUrls.length} discovered URLs.`
+          : 'Scan completed with no new URLs.',
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to trigger scan');
     } finally {
@@ -92,14 +100,14 @@ const ScanTrigger = () => {
     <div className="ui-stack">
       <div className="page-header">
         <div className="page-heading">
-          <span className="hero-badge">Live fetch control</span>
-          <h1>Manual scan trigger</h1>
-          <p>Select tags, run the collector, and push new discoveries into the review queue.</p>
+          <span className="hero-badge">Scan</span>
+          <h1>Manual scan</h1>
+          <p>Run a targeted fetch with tags or manual keywords.</p>
         </div>
         <div className="ui-actions">
           <button type="button" onClick={loadTagGroups} className="ui-button-secondary">
             <RefreshCcw size={15} />
-            Refresh tags
+            Refresh
           </button>
           <button type="button" onClick={handleScan} disabled={scanning} className="ui-button">
             <Radar size={15} />
@@ -107,6 +115,12 @@ const ScanTrigger = () => {
           </button>
         </div>
       </div>
+
+      {notice && (
+        <div className="ui-note">
+          <p>{notice}</p>
+        </div>
+      )}
 
       {error && (
         <div className="ui-note">
@@ -123,8 +137,8 @@ const ScanTrigger = () => {
         <div className="ui-panel">
           <div className="ui-panel-header">
             <div>
-              <h2>Scan completed</h2>
-              <p>New records were collected and forwarded into the review workflow.</p>
+              <h2>Result</h2>
+              <p>{scanResult.discoveredUrls.length} URLs discovered.</p>
             </div>
             <span className="ui-badge success">{scanResult.discoveredUrls.length} discovered</span>
           </div>
@@ -146,14 +160,24 @@ const ScanTrigger = () => {
             <span className="ui-pill">Tags: {scanResult.selectedTagIds.length > 0 ? scanResult.selectedTagIds.join(', ') : 'All tags'}</span>
             <span className="ui-pill">Keywords: {scanResult.keywordsUsed.join(', ') || 'None'}</span>
           </div>
+          {scanResult.discoveredUrls.length > 0 && (
+            <div className="ui-stack" style={{ marginTop: '12px' }}>
+              {scanResult.discoveredUrls.slice(0, 5).map((url) => (
+                <a key={url} href={url} target="_blank" rel="noreferrer" className="signal-meta">
+                  <Search size={14} />
+                  {url}
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       <div className="ui-panel">
         <div className="ui-panel-header">
           <div>
-            <h2>Scan configuration</h2>
-            <p>Enter comma-separated keywords for this run, or leave the field blank to use active DB keywords.</p>
+            <h2>Scope</h2>
+            <p>Leave keywords blank to use active DB keywords.</p>
           </div>
           {selectedTagIds.size > 0 && (
             <button type="button" onClick={() => setSelectedTagIds(new Set())} className="ui-inline-button">
@@ -172,16 +196,8 @@ const ScanTrigger = () => {
             onChange={(event) => setKeywordInput(event.target.value)}
             rows={3}
             placeholder="UFO, Crash, Aztec"
-            style={{
-              width: '100%',
-              resize: 'vertical',
-              minHeight: '84px',
-              borderRadius: '16px',
-              border: '1px solid var(--ui-border)',
-              background: 'var(--ui-panel)',
-              color: 'var(--ui-text)',
-              padding: '14px 16px',
-            }}
+            className="ui-textarea"
+            style={{ minHeight: '84px', resize: 'vertical' }}
           />
           <p className="helper-text">
             Current run will use: {parseKeywordInput(keywordInput).join(', ') || 'active keywords from the database'}
@@ -190,7 +206,7 @@ const ScanTrigger = () => {
 
         {tagGroups.length === 0 ? (
           <div className="ui-empty">
-            <p>No tag groups found. Configure tag groups in the database before scanning.</p>
+            <p>No tag groups found. Configure tag groups before scanning.</p>
           </div>
         ) : (
           <div className="ui-stack">
@@ -198,7 +214,7 @@ const ScanTrigger = () => {
               <section key={group.tagGroupId} className="ui-table-panel">
                 <button type="button" onClick={() => toggleGroup(group.tagGroupId)} className="related-item">
                   <span>{group.groupName}</span>
-                  <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} · {group.tags.length} tags</span>
+                  <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} - {group.tags.length} tags</span>
                 </button>
                 {expandedGroups.has(group.tagGroupId) && (
                   <div className="ui-stack" style={{ padding: '16px' }}>
@@ -231,12 +247,12 @@ const ScanTrigger = () => {
       <div className="ui-note">
         <div className="ui-panel-header">
           <div>
-            <h3>What this does</h3>
-            <p>The route calls the backend scan endpoint and stores discovered items in the database-backed review flow.</p>
+            <h3>Live backend</h3>
+            <p>Runs the backend scan endpoint and sends findings into the queue.</p>
           </div>
           <span className="ui-badge muted">
             <Search size={14} />
-            Repo requirement
+            Connected
           </span>
         </div>
       </div>

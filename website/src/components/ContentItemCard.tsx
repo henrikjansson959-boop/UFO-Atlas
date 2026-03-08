@@ -6,6 +6,7 @@ interface ContentItemCardProps {
   onApprove: (contentId: number) => void;
   onReject: (contentId: number) => void;
   onAssignTags: (item: ContentItem) => void;
+  busy?: boolean;
 }
 
 const typeTone: Record<ContentItem['contentType'], string> = {
@@ -15,7 +16,7 @@ const typeTone: Record<ContentItem['contentType'], string> = {
   news: 'muted',
 };
 
-const ContentItemCard = ({ item, onApprove, onReject, onAssignTags }: ContentItemCardProps) => {
+const ContentItemCard = ({ item, onApprove, onReject, onAssignTags, busy = false }: ContentItemCardProps) => {
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -25,6 +26,14 @@ const ContentItemCard = ({ item, onApprove, onReject, onAssignTags }: ContentIte
     });
   };
 
+  const sourceHost = (() => {
+    try {
+      return new URL(item.sourceUrl).hostname.replace(/^www\./, '');
+    } catch {
+      return item.sourceUrl;
+    }
+  })();
+
   return (
     <article className="entry-card">
       {item.isPotentialDuplicate && (
@@ -32,11 +41,11 @@ const ContentItemCard = ({ item, onApprove, onReject, onAssignTags }: ContentIte
           <div className="ui-panel-header" style={{ marginBottom: 0 }}>
             <div>
               <h3 style={{ marginBottom: 0 }}>Potential duplicate</h3>
-              <p>This item has duplicate signals and should be checked before approval.</p>
+              <p>Review before approving.</p>
             </div>
             <span className="ui-badge warn">
               <TriangleAlert size={14} />
-              Duplicate risk
+              Check
             </span>
           </div>
         </div>
@@ -46,9 +55,10 @@ const ContentItemCard = ({ item, onApprove, onReject, onAssignTags }: ContentIte
         <div className="entry-heading-main">
           <div className="entry-meta" style={{ marginTop: 0 }}>
             <span className={`ui-badge ${typeTone[item.contentType]}`}>{item.contentType}</span>
-            <span>Discovered {formatDate(item.discoveredAt)}</span>
+            <span>{formatDate(item.discoveredAt)}</span>
+            <span>{sourceHost}</span>
           </div>
-          <h3 className="entry-title" style={{ maxWidth: '20ch' }}>{item.title}</h3>
+          <h3 className="entry-title">{item.title}</h3>
         </div>
       </div>
 
@@ -63,7 +73,7 @@ const ContentItemCard = ({ item, onApprove, onReject, onAssignTags }: ContentIte
           <span className="metric-label">Source</span>
           <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" className="signal-meta" style={{ marginTop: '10px' }}>
             <ExternalLink size={14} />
-            Open source URL
+            Open link
           </a>
         </div>
       </div>
@@ -80,7 +90,7 @@ const ContentItemCard = ({ item, onApprove, onReject, onAssignTags }: ContentIte
 
       {item.rawHtml && (
         <details style={{ marginTop: '18px' }}>
-          <summary className="helper-text" style={{ cursor: 'pointer' }}>Raw HTML preview</summary>
+          <summary className="helper-text" style={{ cursor: 'pointer' }}>Raw HTML</summary>
           <div className="dialog-copy" style={{ marginTop: '12px', maxHeight: '12rem', overflow: 'auto' }}>
             <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{item.rawHtml.substring(0, 500)}...</pre>
           </div>
@@ -88,17 +98,17 @@ const ContentItemCard = ({ item, onApprove, onReject, onAssignTags }: ContentIte
       )}
 
       <div className="ui-actions" style={{ marginTop: '20px' }}>
-        <button type="button" onClick={() => onApprove(item.contentId)} className="ui-button">
+        <button type="button" onClick={() => onApprove(item.contentId)} className="ui-button" disabled={busy}>
           <Check size={15} />
-          Approve
+          {busy ? 'Working...' : 'Approve'}
         </button>
-        <button type="button" onClick={() => onReject(item.contentId)} className="ui-button-danger">
+        <button type="button" onClick={() => onReject(item.contentId)} className="ui-button-danger" disabled={busy}>
           <Trash2 size={15} />
           Reject
         </button>
-        <button type="button" onClick={() => onAssignTags(item)} className="ui-button-secondary">
+        <button type="button" onClick={() => onAssignTags(item)} className="ui-button-secondary" disabled={busy}>
           <Tag size={15} />
-          Assign tags
+          Tags
         </button>
       </div>
     </article>

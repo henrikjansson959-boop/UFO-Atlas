@@ -1,8 +1,8 @@
 import { Save, Search } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
+import { SavedSearchCard } from '../components/SavedSearchCard';
 import { keywordAPI, savedSearchAPI, tagAPI } from '../services/api';
 import type { Keyword, SavedSearch, ScanResult, Tag, TagGroup } from '../types';
-import { SavedSearchCard } from '../components/SavedSearchCard';
 
 const SavedSearches = () => {
   const [tagGroups, setTagGroups] = useState<TagGroup[]>([]);
@@ -20,6 +20,7 @@ const SavedSearches = () => {
   const [expandedVersions, setExpandedVersions] = useState<Set<string>>(new Set());
   const [versionHistory, setVersionHistory] = useState<Record<string, SavedSearch[]>>({});
   const [refiningSearch, setRefiningSearch] = useState<SavedSearch | null>(null);
+  const [pendingDeleteSearchId, setPendingDeleteSearchId] = useState<number | null>(null);
 
   useEffect(() => {
     loadData();
@@ -38,6 +39,7 @@ const SavedSearches = () => {
       setKeywords(keywordsData);
       setSavedSearches(savedSearchesData);
       setExpandedGroups(new Set(tagGroupsData.map((group) => group.tagGroupId)));
+      setPendingDeleteSearchId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
@@ -74,6 +76,7 @@ const SavedSearches = () => {
     setKeywordInput('');
     setSelectedTagIds(new Set());
     setRefiningSearch(null);
+    setPendingDeleteSearchId(null);
   };
 
   const handleSaveSearch = async () => {
@@ -103,10 +106,10 @@ const SavedSearches = () => {
           keywordsArray,
           Array.from(selectedTagIds),
         );
-        setSuccess(`Search "${searchNameInput}" refined successfully.`);
+        setSuccess(`Search \"${searchNameInput}\" refined successfully.`);
       } else {
         await savedSearchAPI.createSavedSearch(searchNameInput, keywordsArray, Array.from(selectedTagIds));
-        setSuccess(`Search "${searchNameInput}" saved successfully.`);
+        setSuccess(`Search \"${searchNameInput}\" saved successfully.`);
       }
 
       resetForm();
@@ -123,7 +126,7 @@ const SavedSearches = () => {
       setScanResult(null);
       const result = await savedSearchAPI.executeSavedSearch(search.savedSearchId);
       setScanResult(result);
-      setSuccess(`Search "${search.searchName}" executed successfully.`);
+      setSuccess(`Search \"${search.searchName}\" executed successfully.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to execute search');
     } finally {
@@ -140,14 +143,17 @@ const SavedSearches = () => {
   };
 
   const handleDeleteSearch = async (searchId: number, searchName: string) => {
-    if (!confirm(`Are you sure you want to delete "${searchName}"? Search history will be preserved.`)) {
+    if (pendingDeleteSearchId !== searchId) {
+      setPendingDeleteSearchId(searchId);
+      setSuccess(`Click delete again to remove \"${searchName}\".`);
       return;
     }
 
     try {
       setError(null);
       await savedSearchAPI.deleteSavedSearch(searchId);
-      setSuccess(`Search "${searchName}" deleted successfully.`);
+      setPendingDeleteSearchId(null);
+      setSuccess(`Search \"${searchName}\" deleted successfully.`);
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete search');
@@ -159,6 +165,7 @@ const SavedSearches = () => {
     setSearchNameInput(search.searchName);
     setKeywordInput(search.keywordsUsed.join(', '));
     setSelectedTagIds(new Set(search.selectedTagIds));
+    setPendingDeleteSearchId(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -208,9 +215,9 @@ const SavedSearches = () => {
     <div className="ui-stack">
       <div className="page-header">
         <div className="page-heading">
-          <span className="hero-badge">Reusable search recipes</span>
+          <span className="hero-badge">Saved</span>
           <h1>Saved searches</h1>
-          <p>Version search definitions, rerun them, and keep the search history tied to actual backend scans.</p>
+          <p>Version and rerun reusable searches.</p>
         </div>
       </div>
 
@@ -222,7 +229,7 @@ const SavedSearches = () => {
           <div className="ui-panel-header">
             <div>
               <h2>Execution complete</h2>
-              <p>The saved search was executed and the resulting items were added to the review pipeline.</p>
+              <p>{scanResult.discoveredUrls.length} URLs discovered.</p>
             </div>
             <span className="ui-badge success">{scanResult.discoveredUrls.length} discovered</span>
           </div>
@@ -238,8 +245,8 @@ const SavedSearches = () => {
         <section className="ui-panel">
           <div className="ui-panel-header">
             <div>
-              <h2>{refiningSearch ? `Refine ${refiningSearch.searchName} v${refiningSearch.version}` : 'Create or update a search'}</h2>
-              <p>{refiningSearch ? 'Save a new version from the selected parent search.' : 'Define keywords and tag filters for repeatable scans.'}</p>
+              <h2>{refiningSearch ? `Refine ${refiningSearch.searchName} v${refiningSearch.version}` : 'Create search'}</h2>
+              <p>{refiningSearch ? 'Save a new version.' : 'Store a reusable search.'}</p>
             </div>
             {refiningSearch && (
               <button type="button" className="ui-button-secondary" onClick={resetForm}>
@@ -258,17 +265,17 @@ const SavedSearches = () => {
               <input id="search-keywords" type="text" value={keywordInput} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setKeywordInput(event.target.value)} placeholder="ufo, roswell, witness" className="ui-input" />
               <p className="helper-text">Active DB keywords: {keywords.filter((keyword) => keyword.isActive).map((keyword) => keyword.keywordText).join(', ') || 'None'}</p>
             </div>
+            <div className="ui-field">
+              <label>Selected tags</label>
+              <p className="helper-text">{selectedTagIds.size > 0 ? Array.from(selectedTagIds).map((tagId) => getTagName(tagId)).join(', ') : 'All tags'}</p>
+            </div>
             <div className="ui-actions">
               <button type="button" onClick={handleSaveSearch} className="ui-button">
                 <Save size={15} />
                 {refiningSearch ? 'Save version' : 'Save search'}
               </button>
               {!refiningSearch && (
-                <button
-                  type="button"
-                  className="ui-button-secondary"
-                  onClick={() => setError('Execute Once requires a dedicated backend endpoint. Use Save + Execute for now.')}
-                >
+                <button type="button" className="ui-button-secondary" onClick={() => setError('Execute Once requires a dedicated backend endpoint. Use Save + Execute for now.')}>
                   Execute once
                 </button>
               )}
@@ -280,7 +287,7 @@ const SavedSearches = () => {
           <div className="ui-panel-header">
             <div>
               <h2>Tag filters</h2>
-              <p>Select tags to narrow the search scope. No selection means all tags are eligible.</p>
+              <p>No selection means all tags.</p>
             </div>
             {selectedTagIds.size > 0 && <span className="ui-badge">{selectedTagIds.size} selected</span>}
           </div>
@@ -290,7 +297,7 @@ const SavedSearches = () => {
               <div key={group.tagGroupId} className="ui-table-panel">
                 <button type="button" onClick={() => toggleGroup(group.tagGroupId)} className="related-item">
                   <span>{group.groupName}</span>
-                  <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} � {group.tags.length} tags</span>
+                  <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} - {group.tags.length} tags</span>
                 </button>
                 {expandedGroups.has(group.tagGroupId) && (
                   <div className="ui-stack" style={{ padding: '16px' }}>
@@ -319,7 +326,7 @@ const SavedSearches = () => {
         <div className="ui-panel-header">
           <div>
             <h2>Saved search catalog</h2>
-            <p>Latest versions are shown first. Expand each search to see execution and lineage options.</p>
+            <p>Latest versions first.</p>
           </div>
           <span className="ui-badge muted">{latestSearches.length} active definitions</span>
         </div>
@@ -334,6 +341,7 @@ const SavedSearches = () => {
                 search={search}
                 tagGroups={tagGroups}
                 executing={executing}
+                pendingDelete={pendingDeleteSearchId === search.savedSearchId}
                 expandedVersions={expandedVersions}
                 versionHistory={versionHistory}
                 onExecute={handleExecuteSearch}
@@ -351,8 +359,8 @@ const SavedSearches = () => {
       <div className="ui-note">
         <div className="ui-panel-header">
           <div>
-            <h3>Search execution path</h3>
-            <p>Saved searches call the backend execute endpoint and produce real scan results that feed the review queue.</p>
+            <h3>Live backend</h3>
+            <p>Saved searches execute against the backend and feed the queue.</p>
           </div>
           <span className="ui-badge">
             <Search size={14} />

@@ -1,4 +1,4 @@
-import { Filter, RefreshCcw, Shapes } from 'lucide-react';
+import { Filter, RefreshCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import ContentItemCard from '../components/ContentItemCard';
 import TagAssignmentModal from '../components/TagAssignmentModal';
@@ -12,9 +12,11 @@ const ReviewQueue = () => {
   const [tagGroups, setTagGroups] = useState<TagGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [selectedContentType, setSelectedContentType] = useState<ContentType | 'all'>('all');
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
   const [showTagModal, setShowTagModal] = useState(false);
+  const [busyItemId, setBusyItemId] = useState<number | null>(null);
 
   useEffect(() => {
     loadData();
@@ -24,13 +26,24 @@ const ReviewQueue = () => {
     try {
       setLoading(true);
       setError(null);
+      setNotice(null);
       const filters = selectedContentType !== 'all' ? { contentType: selectedContentType } : undefined;
-      const [items, groups] = await Promise.all([
+      const [items, groups] = await Promise.allSettled([
         reviewQueueAPI.getReviewQueue(filters),
         tagAPI.getTagGroups(),
       ]);
-      setContentItems(items);
-      setTagGroups(groups);
+
+      if (items.status === 'rejected') {
+        throw items.reason;
+      }
+
+      if (groups.status === 'rejected') {
+        setTagGroups([]);
+        setNotice('Queue loaded without tag metadata. Reload to retry tag controls.');
+      } else {
+        setTagGroups(groups.value);
+      }
+      setContentItems(items.value);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load review queue');
     } finally {
@@ -39,22 +52,30 @@ const ReviewQueue = () => {
   };
 
   const handleApprove = async (contentId: number) => {
-    if (!confirm('Are you sure you want to approve this content?')) return;
     try {
+      setBusyItemId(contentId);
+      setError(null);
       await reviewQueueAPI.approveContent(contentId);
       setContentItems((items) => items.filter((item) => item.contentId !== contentId));
+      setNotice('Item approved.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to approve content');
+      setError(err instanceof Error ? err.message : 'Failed to approve content');
+    } finally {
+      setBusyItemId(null);
     }
   };
 
   const handleReject = async (contentId: number) => {
-    if (!confirm('Are you sure you want to reject this content?')) return;
     try {
+      setBusyItemId(contentId);
+      setError(null);
       await reviewQueueAPI.rejectContent(contentId);
       setContentItems((items) => items.filter((item) => item.contentId !== contentId));
+      setNotice('Item rejected.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to reject content');
+      setError(err instanceof Error ? err.message : 'Failed to reject content');
+    } finally {
+      setBusyItemId(null);
     }
   };
 
@@ -67,6 +88,8 @@ const ReviewQueue = () => {
     if (!selectedItem) return;
 
     try {
+      setBusyItemId(selectedItem.contentId);
+      setError(null);
       await reviewQueueAPI.assignTags(selectedItem.contentId, tagIds);
       const updatedGroups = await tagAPI.getTagGroups();
       const allTags = updatedGroups.flatMap((group) => group.tags);
@@ -80,8 +103,11 @@ const ReviewQueue = () => {
 
       setShowTagModal(false);
       setSelectedItem(null);
+      setNotice('Tags updated.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to assign tags');
+      setError(err instanceof Error ? err.message : 'Failed to assign tags');
+    } finally {
+      setBusyItemId(null);
     }
   };
 
@@ -110,21 +136,27 @@ const ReviewQueue = () => {
     <div className="ui-stack">
       <div className="page-header">
         <div className="page-heading">
-          <span className="hero-badge">Moderation workflow</span>
+          <span className="hero-badge">Moderation</span>
           <h1>Review queue</h1>
-          <p>Approve, reject, and enrich pending content before it becomes durable data.</p>
+          <p>{contentItems.length} pending items.</p>
         </div>
         <button type="button" onClick={loadData} className="ui-button-secondary">
           <RefreshCcw size={15} />
-          Refresh queue
+          Refresh
         </button>
       </div>
 
+      {notice && (
+        <div className="ui-note">
+          <p>{notice}</p>
+        </div>
+      )}
+
       <div className="ui-filter-bar">
-        <div className="ui-panel-header">
-          <div>
-            <h3>Filter pending records</h3>
-            <p>Review the full queue or narrow it to a specific content type.</p>
+        <div className="review-toolbar">
+          <div className="compact-summary">
+            <h3>Filter</h3>
+            <p>Content type</p>
           </div>
           <span className="ui-badge muted">
             <Filter size={14} />
@@ -148,7 +180,7 @@ const ReviewQueue = () => {
       {contentItems.length === 0 ? (
         <div className="ui-empty">
           <p>
-            No pending content to review
+            No pending items
             {selectedContentType !== 'all' && ` for type "${selectedContentType}"`}.
           </p>
         </div>
@@ -161,6 +193,7 @@ const ReviewQueue = () => {
               onApprove={handleApprove}
               onReject={handleReject}
               onAssignTags={handleAssignTags}
+              busy={busyItemId === item.contentId}
             />
           ))}
         </div>
@@ -177,19 +210,6 @@ const ReviewQueue = () => {
           onAssign={handleTagsAssigned}
         />
       )}
-
-      <div className="ui-note">
-        <div className="ui-panel-header">
-          <div>
-            <h3>Stored workflow</h3>
-            <p>This page is connected to the DB-backed review queue, not a mock case browser.</p>
-          </div>
-          <span className="ui-badge">
-            <Shapes size={14} />
-            Content triage
-          </span>
-        </div>
-      </div>
     </div>
   );
 };

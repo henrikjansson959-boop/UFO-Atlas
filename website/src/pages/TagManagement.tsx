@@ -1,5 +1,5 @@
 import { FolderPlus, Pencil, RefreshCcw, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { tagAPI } from '../services/api';
 import type { Tag, TagGroup } from '../types';
 
@@ -7,11 +7,14 @@ const TagManagement = () => {
   const [tagGroups, setTagGroups] = useState<TagGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const [newTagName, setNewTagName] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [addingTag, setAddingTag] = useState(false);
   const [editingTag, setEditingTag] = useState<{ tagId: number; tagName: string } | null>(null);
+  const [pendingDeleteTagId, setPendingDeleteTagId] = useState<number | null>(null);
+  const [busyTagId, setBusyTagId] = useState<number | null>(null);
 
   useEffect(() => {
     loadTagGroups();
@@ -21,6 +24,7 @@ const TagManagement = () => {
     try {
       setLoading(true);
       setError(null);
+      setNotice(null);
       const data = await tagAPI.getTagGroups();
       setTagGroups(data);
       setExpandedGroups(new Set(data.map((group) => group.tagGroupId)));
@@ -43,25 +47,28 @@ const TagManagement = () => {
     });
   };
 
-  const handleAddTag = async (event: React.FormEvent) => {
+  const handleAddTag = async (event: FormEvent) => {
     event.preventDefault();
     if (!newTagName.trim()) {
-      alert('Please enter a tag name');
+      setError('Enter a tag name.');
       return;
     }
     if (!selectedGroupId) {
-      alert('Please select a tag group');
+      setError('Select a tag group.');
       return;
     }
 
     try {
       setAddingTag(true);
+      setError(null);
+      setNotice(null);
       await tagAPI.createTag(newTagName.trim(), selectedGroupId);
       setNewTagName('');
       setSelectedGroupId(null);
       await loadTagGroups();
+      setNotice('Tag added.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to add tag');
+      setError(err instanceof Error ? err.message : 'Failed to add tag');
     } finally {
       setAddingTag(false);
     }
@@ -69,29 +76,42 @@ const TagManagement = () => {
 
   const handleEditTag = async (tagId: number, newName: string) => {
     if (!newName.trim()) {
-      alert('Tag name cannot be empty');
+      setError('Tag name cannot be empty.');
       return;
     }
 
     try {
+      setBusyTagId(tagId);
+      setError(null);
       await tagAPI.updateTag(tagId, newName.trim());
       setEditingTag(null);
       await loadTagGroups();
+      setNotice('Tag updated.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update tag');
+      setError(err instanceof Error ? err.message : 'Failed to update tag');
+    } finally {
+      setBusyTagId(null);
     }
   };
 
   const handleDeleteTag = async (tagId: number, tagName: string) => {
-    if (!confirm(`Are you sure you want to delete the tag "${tagName}"? This will fail if the tag is assigned to any content.`)) {
+    if (pendingDeleteTagId !== tagId) {
+      setPendingDeleteTagId(tagId);
+      setNotice(`Click delete again to remove \"${tagName}\".`);
       return;
     }
 
     try {
+      setBusyTagId(tagId);
+      setError(null);
       await tagAPI.deleteTag(tagId);
+      setPendingDeleteTagId(null);
       await loadTagGroups();
+      setNotice('Tag deleted.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete tag. It may be assigned to content items.');
+      setError(err instanceof Error ? err.message : 'Failed to delete tag. It may be assigned to content items.');
+    } finally {
+      setBusyTagId(null);
     }
   };
 
@@ -107,9 +127,9 @@ const TagManagement = () => {
     <div className="ui-stack">
       <div className="page-header">
         <div className="page-heading">
-          <span className="hero-badge">Classification controls</span>
-          <h1>Tag management</h1>
-          <p>Create and maintain the tag vocabulary used by scans, reviews, and saved searches.</p>
+          <span className="hero-badge">Tags</span>
+          <h1>Tag control</h1>
+          <p>Keep the classification set clean.</p>
         </div>
         <button type="button" onClick={loadTagGroups} className="ui-button-secondary">
           <RefreshCcw size={15} />
@@ -117,16 +137,32 @@ const TagManagement = () => {
         </button>
       </div>
 
+      {notice && <div className="ui-note"><p>{notice}</p></div>}
+
       <section className="ui-panel">
         <div className="ui-panel-header">
           <div>
             <h2>Add tag</h2>
-            <p>Choose a group and create a new assignable tag.</p>
+            <p>Choose a group and add one tag.</p>
           </div>
         </div>
         <form onSubmit={handleAddTag} className="ui-actions">
-          <input type="text" value={newTagName} onChange={(event) => setNewTagName(event.target.value)} placeholder="Jesse Marcel" className="ui-input" style={{ flex: 1 }} disabled={addingTag} />
-          <select value={selectedGroupId || ''} onChange={(event) => setSelectedGroupId(Number(event.target.value))} className="ui-select" disabled={addingTag} style={{ minWidth: '15rem' }}>
+          <input
+            type="text"
+            value={newTagName}
+            onChange={(event) => setNewTagName(event.target.value)}
+            placeholder="Jesse Marcel"
+            className="ui-input"
+            style={{ flex: 1 }}
+            disabled={addingTag}
+          />
+          <select
+            value={selectedGroupId || ''}
+            onChange={(event) => setSelectedGroupId(Number(event.target.value))}
+            className="ui-select"
+            disabled={addingTag}
+            style={{ minWidth: '15rem' }}
+          >
             <option value="">Select tag group</option>
             {tagGroups.map((group) => (
               <option key={group.tagGroupId} value={group.tagGroupId}>{group.groupName}</option>
@@ -147,7 +183,7 @@ const TagManagement = () => {
             <section key={group.tagGroupId} className="ui-table-panel">
               <button type="button" onClick={() => toggleGroup(group.tagGroupId)} className="related-item">
                 <span>{group.groupName}</span>
-                <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} · {group.tags.length} tags</span>
+                <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} - {group.tags.length} tags</span>
               </button>
               {expandedGroups.has(group.tagGroupId) && (
                 <div className="ui-stack" style={{ padding: '16px' }}>
@@ -165,10 +201,11 @@ const TagManagement = () => {
                               className="ui-input"
                               style={{ flex: 1 }}
                               autoFocus
+                              disabled={busyTagId === tag.tagId}
                             />
                             <span className="ui-actions">
-                              <button type="button" onClick={() => handleEditTag(editingTag.tagId, editingTag.tagName)} className="ui-button">Save</button>
-                              <button type="button" onClick={() => setEditingTag(null)} className="ui-button-secondary">Cancel</button>
+                              <button type="button" onClick={() => handleEditTag(editingTag.tagId, editingTag.tagName)} className="ui-button" disabled={busyTagId === tag.tagId}>Save</button>
+                              <button type="button" onClick={() => setEditingTag(null)} className="ui-button-secondary" disabled={busyTagId === tag.tagId}>Cancel</button>
                             </span>
                           </>
                         ) : (
@@ -179,9 +216,9 @@ const TagManagement = () => {
                                 <Pencil size={15} />
                                 Edit
                               </button>
-                              <button type="button" onClick={() => handleDeleteTag(tag.tagId, tag.tagName)} className="ui-button-danger">
+                              <button type="button" onClick={() => handleDeleteTag(tag.tagId, tag.tagName)} className="ui-button-danger" disabled={busyTagId === tag.tagId}>
                                 <Trash2 size={15} />
-                                Delete
+                                {busyTagId === tag.tagId ? 'Deleting...' : pendingDeleteTagId === tag.tagId ? 'Confirm delete' : 'Delete'}
                               </button>
                             </span>
                           </>

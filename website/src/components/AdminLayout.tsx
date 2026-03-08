@@ -1,20 +1,31 @@
-import { Activity, BookOpen, Database, History, LayoutDashboard, Moon, Radar, Search, Sun, Tags, TriangleAlert } from 'lucide-react';
+import { BookOpen, Database, History, LayoutDashboard, Moon, Radar, Search, Sun, Tags, TriangleAlert } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useTheme } from './ThemeContext';
 
 const navItems = [
-  { path: '/admin/review-queue', label: 'Review Queue', icon: LayoutDashboard, note: 'Approve and classify incoming items' },
-  { path: '/admin/scan', label: 'Scan Trigger', icon: Radar, note: 'Run fetch jobs using tags and keywords' },
-  { path: '/admin/saved-searches', label: 'Saved Searches', icon: Search, note: 'Reuse search recipes and version them' },
-  { path: '/admin/keywords', label: 'Keywords', icon: BookOpen, note: 'Control active terms in the crawler' },
-  { path: '/admin/tags', label: 'Tags', icon: Tags, note: 'Organize entities and classification groups' },
-  { path: '/admin/history', label: 'History', icon: History, note: 'Audit previous scans and outcomes' },
-  { path: '/admin/logs', label: 'Error Logs', icon: TriangleAlert, note: 'Inspect ingestion and processing failures' },
+  { path: '/admin/review-queue', label: 'Queue', icon: LayoutDashboard },
+  { path: '/admin/scan', label: 'Scan', icon: Radar },
+  { path: '/admin/saved-searches', label: 'Saved', icon: Search },
+  { path: '/admin/keywords', label: 'Keywords', icon: BookOpen },
+  { path: '/admin/tags', label: 'Tags', icon: Tags },
+  { path: '/admin/history', label: 'History', icon: History },
+  { path: '/admin/logs', label: 'Logs', icon: TriangleAlert },
 ] as const;
+
+const routeTitles: Record<string, string> = {
+  '/admin/review-queue': 'Review Queue',
+  '/admin/scan': 'Manual Scan',
+  '/admin/saved-searches': 'Saved Searches',
+  '/admin/keywords': 'Keywords',
+  '/admin/tags': 'Tags',
+  '/admin/history': 'History',
+  '/admin/logs': 'Error Logs',
+};
 
 const AdminLayout = () => {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const activeTitle = routeTitles[location.pathname] ?? 'Admin';
 
   return (
     <div className="shell">
@@ -31,11 +42,9 @@ const AdminLayout = () => {
           </Link>
 
           <div className="sidebar-copy">
-            <p className="eyebrow compact">Phase 1</p>
-            <h1>Admin review workspace</h1>
-            <p>
-              Search, fetch, review, classify, and store findings against the live Supabase dataset.
-            </p>
+            <p className="eyebrow compact">Admin</p>
+            <h1>Control panel</h1>
+            <p>Review, scan, classify.</p>
           </div>
 
           <nav className="admin-nav">
@@ -52,10 +61,7 @@ const AdminLayout = () => {
                   <div className="admin-nav-icon">
                     <Icon size={16} />
                   </div>
-                  <div>
-                    <strong>{item.label}</strong>
-                    <span>{item.note}</span>
-                  </div>
+                  <strong>{item.label}</strong>
                 </Link>
               );
             })}
@@ -63,30 +69,30 @@ const AdminLayout = () => {
 
           <div className="admin-status-grid">
             <div className="metric-card">
-              <span className="metric-label">Backend</span>
-              <strong className="metric-value">Live API</strong>
+              <span className="metric-label">API</span>
+              <strong className="metric-value">Live</strong>
             </div>
             <div className="metric-card">
-              <span className="metric-label">Database</span>
-              <strong className="metric-value">Supabase</strong>
+              <span className="metric-label">DB</span>
+              <strong className="metric-value">Ready</strong>
             </div>
           </div>
         </aside>
 
         <section className="admin-main">
           <header className="topbar topbar-panel admin-topbar">
-            <div>
-              <p className="eyebrow compact">Operations</p>
-              <h2 className="admin-topbar-title">Collection and review workflows</h2>
+            <div className="admin-route-header">
+              <p className="eyebrow compact">UFO Atlas</p>
+              <h2 className="admin-topbar-title">{activeTitle}</h2>
             </div>
             <div className="header-actions">
               <Link to="/admin/scan" className="ghost-button small">
                 <Radar size={15} />
-                Trigger Scan
+                Scan
               </Link>
               <Link to="/admin/review-queue" className="ghost-button small">
                 <Database size={15} />
-                Open Queue
+                Queue
               </Link>
               <button type="button" className="icon-button" onClick={toggleTheme} aria-label="Toggle theme">
                 {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
@@ -95,30 +101,6 @@ const AdminLayout = () => {
           </header>
 
           <div className="admin-main-inner">
-            <div className="admin-overview-grid">
-              <article className="card-panel overview-card">
-                <div className="overview-icon"><Activity size={16} /></div>
-                <div>
-                  <span className="metric-label">Workflow</span>
-                  <strong>Search and fetch</strong>
-                </div>
-              </article>
-              <article className="card-panel overview-card">
-                <div className="overview-icon"><LayoutDashboard size={16} /></div>
-                <div>
-                  <span className="metric-label">Queue</span>
-                  <strong>Review pending items</strong>
-                </div>
-              </article>
-              <article className="card-panel overview-card">
-                <div className="overview-icon"><History size={16} /></div>
-                <div>
-                  <span className="metric-label">Audit</span>
-                  <strong>Track scans and errors</strong>
-                </div>
-              </article>
-            </div>
-
             <div className="card-panel admin-content-panel">
               <Outlet />
             </div>
