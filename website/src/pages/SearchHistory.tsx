@@ -60,9 +60,9 @@ const SearchHistory = () => {
     <div className="ui-stack">
       <div className="page-header">
         <div className="page-heading">
-          <span className="hero-badge">History</span>
-          <h1>Search history</h1>
-          <p>Review past runs and their scope.</p>
+          <span className="hero-badge">Runs</span>
+          <h1>Run history</h1>
+          <p>Review how each scan was scoped: terms, labels, source recipe, and output.</p>
         </div>
         <button type="button" onClick={loadData} className="ui-button-secondary">
           <RefreshCcw size={15} />
@@ -83,10 +83,10 @@ const SearchHistory = () => {
                   <th>Timestamp</th>
                   <th>Type</th>
                   <th>Job</th>
-                  <th>Keywords</th>
-                  <th>Tags</th>
+                  <th>Terms</th>
+                  <th>Labels</th>
                   <th>Found</th>
-                  <th>Saved</th>
+                  <th>Recipe</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -147,7 +147,7 @@ const SearchHistory = () => {
                             </div>
                             {entry.keywordsUsed.length > 0 && (
                               <div>
-                                <h4 className="ui-table-title">Keywords</h4>
+                                <h4 className="ui-table-title">Terms</h4>
                                 <div className="ui-pill-row" style={{ marginTop: '8px' }}>
                                   {entry.keywordsUsed.map((keyword, index) => (
                                     <span key={index} className="ui-pill">{keyword}</span>
@@ -157,10 +157,10 @@ const SearchHistory = () => {
                             )}
                             {entry.selectedTagIds.length > 0 && (
                               <div>
-                                <h4 className="ui-table-title">Tag IDs</h4>
+                                <h4 className="ui-table-title">Label IDs</h4>
                                 <div className="ui-pill-row" style={{ marginTop: '8px' }}>
                                   {entry.selectedTagIds.map((tagId) => (
-                                    <span key={tagId} className="ui-pill">Tag #{tagId}</span>
+                                    <span key={tagId} className="ui-pill">Label #{tagId}</span>
                                   ))}
                                 </div>
                               </div>

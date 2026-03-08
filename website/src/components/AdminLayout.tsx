@@ -6,19 +6,19 @@ const navItems = [
   { path: '/admin/review-queue', label: 'Queue', icon: LayoutDashboard },
   { path: '/admin/scan', label: 'Scan', icon: Radar },
   { path: '/admin/saved-searches', label: 'Saved', icon: Search },
-  { path: '/admin/keywords', label: 'Keywords', icon: BookOpen },
-  { path: '/admin/tags', label: 'Tags', icon: Tags },
-  { path: '/admin/history', label: 'History', icon: History },
+  { path: '/admin/keywords', label: 'Terms', icon: BookOpen },
+  { path: '/admin/tags', label: 'Labels', icon: Tags },
+  { path: '/admin/history', label: 'Runs', icon: History },
   { path: '/admin/logs', label: 'Logs', icon: TriangleAlert },
 ] as const;
 
 const routeTitles: Record<string, string> = {
   '/admin/review-queue': 'Review Queue',
-  '/admin/scan': 'Manual Scan',
+  '/admin/scan': 'Scan Brief',
   '/admin/saved-searches': 'Saved Searches',
-  '/admin/keywords': 'Keywords',
-  '/admin/tags': 'Tags',
-  '/admin/history': 'History',
+  '/admin/keywords': 'Term Library',
+  '/admin/tags': 'Review Labels',
+  '/admin/history': 'Run History',
   '/admin/logs': 'Error Logs',
 };
 

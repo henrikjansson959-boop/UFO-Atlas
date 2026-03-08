@@ -101,8 +101,8 @@ const ScanTrigger = () => {
       <div className="page-header">
         <div className="page-heading">
           <span className="hero-badge">Scan</span>
-          <h1>Manual scan</h1>
-          <p>Run a targeted fetch with tags or manual keywords.</p>
+          <h1>Scan brief</h1>
+          <p>Terms drive retrieval. Labels narrow review context.</p>
         </div>
         <div className="ui-actions">
           <button type="button" onClick={loadTagGroups} className="ui-button-secondary">
@@ -148,7 +148,7 @@ const ScanTrigger = () => {
               <strong className="metric-value">{scanResult.scanJobId.slice(0, 8)}</strong>
             </div>
             <div className="metric-card">
-              <span className="metric-label">Keywords used</span>
+              <span className="metric-label">Terms used</span>
               <strong className="metric-value">{scanResult.keywordsUsed.length}</strong>
             </div>
             <div className="metric-card">
@@ -157,8 +157,8 @@ const ScanTrigger = () => {
             </div>
           </div>
           <div className="ui-pill-row">
-            <span className="ui-pill">Tags: {scanResult.selectedTagIds.length > 0 ? scanResult.selectedTagIds.join(', ') : 'All tags'}</span>
-            <span className="ui-pill">Keywords: {scanResult.keywordsUsed.join(', ') || 'None'}</span>
+            <span className="ui-pill">Labels: {scanResult.selectedTagIds.length > 0 ? scanResult.selectedTagIds.join(', ') : 'All labels'}</span>
+            <span className="ui-pill">Terms: {scanResult.keywordsUsed.join(', ') || 'None'}</span>
           </div>
           {scanResult.discoveredUrls.length > 0 && (
             <div className="ui-stack" style={{ marginTop: '12px' }}>
@@ -176,19 +176,19 @@ const ScanTrigger = () => {
       <div className="ui-panel">
         <div className="ui-panel-header">
           <div>
-            <h2>Scope</h2>
-            <p>Leave keywords blank to use active DB keywords.</p>
+            <h2>Search terms</h2>
+            <p>Leave this blank to use the active term library.</p>
           </div>
           {selectedTagIds.size > 0 && (
             <button type="button" onClick={() => setSelectedTagIds(new Set())} className="ui-inline-button">
-              Clear {selectedTagIds.size} selected
+              Clear {selectedTagIds.size} labels
             </button>
           )}
         </div>
 
         <div className="ui-stack" style={{ padding: '0 16px 16px' }}>
           <label className="helper-text" htmlFor="manual-keywords">
-            Manual keywords
+            Terms for this run
           </label>
           <textarea
             id="manual-keywords"
@@ -200,26 +200,32 @@ const ScanTrigger = () => {
             style={{ minHeight: '84px', resize: 'vertical' }}
           />
           <p className="helper-text">
-            Current run will use: {parseKeywordInput(keywordInput).join(', ') || 'active keywords from the database'}
+            Retrieval will use: {parseKeywordInput(keywordInput).join(', ') || 'active terms from the library'}
+          </p>
+          <p className="helper-text">
+            Labels do not create search text. They only tighten the review context for this run.
           </p>
         </div>
 
         {tagGroups.length === 0 ? (
           <div className="ui-empty">
-            <p>No tag groups found. Configure tag groups before scanning.</p>
+            <p>No label groups found. Configure labels before scanning.</p>
           </div>
         ) : (
           <div className="ui-stack">
+            <div className="ui-note">
+              <p>{selectedTagIds.size > 0 ? `${selectedTagIds.size} labels selected for this run.` : 'No labels selected. The scan will stay broad.'}</p>
+            </div>
             {tagGroups.map((group) => (
               <section key={group.tagGroupId} className="ui-table-panel">
                 <button type="button" onClick={() => toggleGroup(group.tagGroupId)} className="related-item">
                   <span>{group.groupName}</span>
-                  <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} - {group.tags.length} tags</span>
+                  <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} - {group.tags.length} labels</span>
                 </button>
                 {expandedGroups.has(group.tagGroupId) && (
                   <div className="ui-stack" style={{ padding: '16px' }}>
                     {group.tags.length === 0 ? (
-                      <p className="helper-text">No tags in this group.</p>
+                      <p className="helper-text">No labels in this group.</p>
                     ) : (
                       group.tags.map((tag: Tag) => (
                         <label key={tag.tagId} className="related-item" style={{ cursor: 'pointer' }}>
@@ -232,7 +238,7 @@ const ScanTrigger = () => {
                             />
                             {tag.tagName}
                           </span>
-                          <span>{selectedTagIds.has(tag.tagId) ? 'Selected' : 'Available'}</span>
+                          <span>{selectedTagIds.has(tag.tagId) ? 'In run' : 'Available'}</span>
                         </label>
                       ))
                     )}
@@ -248,7 +254,7 @@ const ScanTrigger = () => {
         <div className="ui-panel-header">
           <div>
             <h3>Live backend</h3>
-            <p>Runs the backend scan endpoint and sends findings into the queue.</p>
+            <p>Runs the backend scan endpoint and sends matched findings into the queue.</p>
           </div>
           <span className="ui-badge muted">
             <Search size={14} />

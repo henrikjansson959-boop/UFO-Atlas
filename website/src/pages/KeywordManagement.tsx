@@ -87,9 +87,9 @@ const KeywordManagement = () => {
     <div className="ui-stack">
       <div className="page-header">
         <div className="page-heading">
-          <span className="hero-badge">Keywords</span>
-          <h1>Keyword control</h1>
-          <p>Keep the active scan terms tight.</p>
+          <span className="hero-badge">Terms</span>
+          <h1>Term library</h1>
+          <p>These terms become default scan inputs when no custom brief is supplied.</p>
         </div>
         <button type="button" onClick={loadKeywords} className="ui-button-secondary">
           <RefreshCcw size={15} />
@@ -102,8 +102,8 @@ const KeywordManagement = () => {
       <section className="ui-panel">
         <div className="ui-panel-header">
           <div>
-            <h2>Add keyword</h2>
-            <p>Available immediately.</p>
+            <h2>Add term</h2>
+            <p>Used by default scans and saved recipes.</p>
           </div>
         </div>
         <form onSubmit={handleAddKeyword} className="ui-actions">
@@ -118,19 +118,19 @@ const KeywordManagement = () => {
           />
           <button type="submit" disabled={addingKeyword} className="ui-button">
             <BookPlus size={15} />
-            {addingKeyword ? 'Adding...' : 'Add keyword'}
+            {addingKeyword ? 'Adding...' : 'Add term'}
           </button>
         </form>
       </section>
 
       {keywords.length === 0 ? (
-        <div className="ui-empty"><p>No keywords configured yet.</p></div>
+        <div className="ui-empty"><p>No terms configured yet.</p></div>
       ) : (
         <section className="ui-table-panel">
           <table className="ui-table">
             <thead>
               <tr>
-                <th>Keyword</th>
+                <th>Term</th>
                 <th>Status</th>
                 <th>Last Scan</th>
                 <th>Actions</th>

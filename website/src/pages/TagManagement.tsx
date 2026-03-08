@@ -127,9 +127,9 @@ const TagManagement = () => {
     <div className="ui-stack">
       <div className="page-header">
         <div className="page-heading">
-          <span className="hero-badge">Tags</span>
-          <h1>Tag control</h1>
-          <p>Keep the classification set clean.</p>
+          <span className="hero-badge">Labels</span>
+          <h1>Review labels</h1>
+          <p>Labels organize findings after retrieval and can narrow a run.</p>
         </div>
         <button type="button" onClick={loadTagGroups} className="ui-button-secondary">
           <RefreshCcw size={15} />
@@ -142,8 +142,8 @@ const TagManagement = () => {
       <section className="ui-panel">
         <div className="ui-panel-header">
           <div>
-            <h2>Add tag</h2>
-            <p>Choose a group and add one tag.</p>
+            <h2>Add label</h2>
+            <p>Choose a group and add one label.</p>
           </div>
         </div>
         <form onSubmit={handleAddTag} className="ui-actions">
@@ -163,32 +163,32 @@ const TagManagement = () => {
             disabled={addingTag}
             style={{ minWidth: '15rem' }}
           >
-            <option value="">Select tag group</option>
+            <option value="">Select label group</option>
             {tagGroups.map((group) => (
               <option key={group.tagGroupId} value={group.tagGroupId}>{group.groupName}</option>
             ))}
           </select>
           <button type="submit" disabled={addingTag} className="ui-button">
             <FolderPlus size={15} />
-            {addingTag ? 'Adding...' : 'Add tag'}
+            {addingTag ? 'Adding...' : 'Add label'}
           </button>
         </form>
       </section>
 
       {tagGroups.length === 0 ? (
-        <div className="ui-empty"><p>No tag groups found.</p></div>
+        <div className="ui-empty"><p>No label groups found.</p></div>
       ) : (
         <div className="ui-stack">
           {tagGroups.map((group) => (
             <section key={group.tagGroupId} className="ui-table-panel">
               <button type="button" onClick={() => toggleGroup(group.tagGroupId)} className="related-item">
                 <span>{group.groupName}</span>
-                <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} - {group.tags.length} tags</span>
+                <span>{expandedGroups.has(group.tagGroupId) ? 'Hide' : 'Show'} - {group.tags.length} labels</span>
               </button>
               {expandedGroups.has(group.tagGroupId) && (
                 <div className="ui-stack" style={{ padding: '16px' }}>
                   {group.tags.length === 0 ? (
-                    <p className="helper-text">No tags in this group yet.</p>
+                    <p className="helper-text">No labels in this group yet.</p>
                   ) : (
                     group.tags.map((tag: Tag) => (
                       <div key={tag.tagId} className="related-item">
