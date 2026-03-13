@@ -18,6 +18,9 @@ export class StorageService implements IStorageService {
   private client: SupabaseClient;
   private readonly maxRetries = 3;
   private readonly baseDelay = 1000; // 1 second
+  private readonly maxRawHtmlLength = 40000;
+  private readonly maxExtractedTextLength = 4000;
+  private readonly maxArrayItems = 8;
 
   constructor(supabaseUrl: string, supabaseKey: string) {
     this.client = createClient(supabaseUrl, supabaseKey, {
@@ -67,15 +70,23 @@ export class StorageService implements IStorageService {
     isPotentialDuplicate: boolean
   ): Promise<number> {
     return this.withRetry(async () => {
+      const sanitizedContent = this.sanitizeExtractedContent(content);
       const { data, error } = await this.client
         .from('review_queue')
         .insert({
-          title: content.title,
-          description: content.description,
-          event_date: content.eventDate,
-          source_url: content.sourceUrl,
-          content_type: content.contentType,
-          raw_html: content.rawHtml,
+          title: sanitizedContent.title,
+          description: sanitizedContent.description,
+          event_date: sanitizedContent.eventDate,
+          source_url: sanitizedContent.sourceUrl,
+          content_type: sanitizedContent.contentType,
+          raw_html: sanitizedContent.rawHtml,
+          extracted_text: sanitizedContent.extractedText ?? null,
+          people: sanitizedContent.people ?? [],
+          organizations: sanitizedContent.organizations ?? [],
+          case_topics: sanitizedContent.caseTopics ?? [],
+          image_urls: sanitizedContent.imageUrls ?? [],
+          related_topics: sanitizedContent.relatedTopics ?? [],
+          follow_up_queries: sanitizedContent.followUpQueries ?? [],
           status: 'pending',
           is_potential_duplicate: isPotentialDuplicate,
         })
@@ -85,6 +96,46 @@ export class StorageService implements IStorageService {
       if (error) throw error;
       return data.content_id;
     }, 'insertReviewQueue');
+  }
+
+  private sanitizeExtractedContent(content: ExtractedContent): ExtractedContent {
+    return {
+      ...content,
+      title: this.truncateText(content.title, 500),
+      description: this.truncateText(content.description, 1200),
+      rawHtml: this.truncateText(content.rawHtml, this.maxRawHtmlLength),
+      extractedText: this.truncateOptionalText(content.extractedText, this.maxExtractedTextLength),
+      people: this.sanitizeTextArray(content.people),
+      organizations: this.sanitizeTextArray(content.organizations),
+      caseTopics: this.sanitizeTextArray(content.caseTopics),
+      imageUrls: this.sanitizeTextArray(content.imageUrls),
+      relatedTopics: this.sanitizeTextArray(content.relatedTopics),
+      followUpQueries: this.sanitizeTextArray(content.followUpQueries),
+    };
+  }
+
+  private sanitizeTextArray(values?: string[]): string[] {
+    return Array.from(
+      new Set(
+        (values ?? [])
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0)
+          .map((value) => this.truncateText(value, 300)),
+      ),
+    ).slice(0, this.maxArrayItems);
+  }
+
+  private truncateOptionalText(value: string | undefined, maxLength: number): string | undefined {
+    return value ? this.truncateText(value, maxLength) : undefined;
+  }
+
+  private truncateText(value: string, maxLength: number): string {
+    const normalizedValue = value.replace(/\0/g, '').trim();
+    if (normalizedValue.length <= maxLength) {
+      return normalizedValue;
+    }
+
+    return `${normalizedValue.slice(0, Math.max(0, maxLength - 1))}…`;
   }
 
   /**
@@ -192,6 +243,13 @@ export class StorageService implements IStorageService {
           source_url,
           content_type,
           raw_html,
+          extracted_text,
+          people,
+          organizations,
+          case_topics,
+          image_urls,
+          related_topics,
+          follow_up_queries,
           discovered_at,
           status,
           is_potential_duplicate
@@ -227,6 +285,13 @@ export class StorageService implements IStorageService {
           sourceUrl: item.source_url,
           contentType: item.content_type,
           rawHtml: item.raw_html,
+          extractedText: item.extracted_text ?? '',
+          people: Array.isArray(item.people) ? item.people : [],
+          organizations: Array.isArray(item.organizations) ? item.organizations : [],
+          caseTopics: Array.isArray(item.case_topics) ? item.case_topics : [],
+          imageUrls: Array.isArray(item.image_urls) ? item.image_urls : [],
+          relatedTopics: Array.isArray(item.related_topics) ? item.related_topics : [],
+          followUpQueries: Array.isArray(item.follow_up_queries) ? item.follow_up_queries : [],
           discoveredAt: new Date(item.discovered_at),
           status: item.status,
           isPotentialDuplicate: item.is_potential_duplicate,

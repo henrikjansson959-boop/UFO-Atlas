@@ -40,6 +40,30 @@ const UFO_FOCUS_TERMS = [
   'reverse engineering',
 ];
 
+const STRONG_UFO_TERMS = [
+  'ufo',
+  'ufos',
+  'uap',
+  'uaps',
+  'alien',
+  'aliens',
+  'extraterrestrial',
+  'extraterrestrials',
+  'nhi',
+  'non-human intelligence',
+  'abduction',
+  'abductions',
+  'roswell',
+  'aztec',
+  'area 51',
+  'aatip',
+  'aawsap',
+  'grusch',
+  'whistleblower',
+  'crash retrieval',
+  'reverse engineering',
+];
+
 const EXPLICIT_UFO_CONTEXT_TERMS = [
   'ufo',
   'ufos',
@@ -101,6 +125,18 @@ const IRRELEVANT_TERMS = [
   'wallpaper',
   'cosplay',
   'video game',
+  'vehicle',
+  'prototype',
+  'engineer',
+  'engineers',
+  'engineering',
+  'takes off',
+  'takeoff',
+  'air mobility',
+  'evtol',
+  'startup',
+  'concept craft',
+  'concept vehicle',
 ];
 
 const BLOCKED_SAFETY_TERMS = [
@@ -193,6 +229,13 @@ export class ContentScanner implements IContentScanner {
       const fallbackStrategy = options.fallbackStrategy ?? 'per-keyword';
       const customQueries = options.customQueries?.filter((query) => query.trim().length > 0) ?? [];
       const aiAssistRequested = customQueries.length > 0;
+      const isCancelled = options.isCancelled ?? (() => false);
+
+      const throwIfCancelled = () => {
+        if (isCancelled()) {
+          throw new Error('Scan stopped');
+        }
+      };
 
       // If no keywords provided, get active keywords
       const searchKeywords = keywords.length > 0 ? keywords : await this.getActiveKeywords();
@@ -201,6 +244,7 @@ export class ContentScanner implements IContentScanner {
       const tagNames = await this.getTagNames(tagIds);
 
       const processUrls = async (urls: string[]) => {
+        throwIfCancelled();
         urls.forEach((url) => discoveredUrls.add(url));
 
         if (!this.contentExtractor) {
@@ -208,6 +252,7 @@ export class ContentScanner implements IContentScanner {
         }
 
         for (const url of urls) {
+          throwIfCancelled();
           try {
             if (typeof this.contentExtractor.extractAndStore === 'function') {
               const storedContentId = await this.contentExtractor.extractAndStore(url);
@@ -217,8 +262,8 @@ export class ContentScanner implements IContentScanner {
               continue;
             }
 
-            const content = await this.contentExtractor.extract(url);
-            if (content) {
+            const extractedContent = await this.contentExtractor.extract(url);
+            if (extractedContent) {
               itemsDiscovered++;
             }
           } catch (error) {
@@ -230,6 +275,7 @@ export class ContentScanner implements IContentScanner {
 
       if (customQueries.length > 0) {
         for (const query of customQueries) {
+          throwIfCancelled();
           try {
             executedQueries.push(query);
             const urls = await this.searchWithRetry(query, tagNames);
@@ -241,6 +287,7 @@ export class ContentScanner implements IContentScanner {
         }
       } else if (searchKeywords.length > 1) {
         try {
+          throwIfCancelled();
           const combinedKeywordQuery = searchKeywords.join(' ');
           executedQueries.push(this.buildSearchQuery(combinedKeywordQuery, tagNames));
           const combinedUrls = await this.searchWithRetry(combinedKeywordQuery, tagNames);
@@ -250,7 +297,7 @@ export class ContentScanner implements IContentScanner {
           } else if (fallbackStrategy === 'per-keyword') {
             await this.executePerKeywordSearch(searchKeywords, tagNames, executedQueries, processUrls, () => {
               errorCount++;
-            });
+            }, isCancelled);
           }
         } catch (error) {
           this.logError('executeScan', 'Failed to search combined keyword query', error);
@@ -258,13 +305,13 @@ export class ContentScanner implements IContentScanner {
           if (fallbackStrategy === 'per-keyword') {
             await this.executePerKeywordSearch(searchKeywords, tagNames, executedQueries, processUrls, () => {
               errorCount++;
-            });
+            }, isCancelled);
           }
         }
       } else {
         await this.executePerKeywordSearch(searchKeywords, tagNames, executedQueries, processUrls, () => {
           errorCount++;
-        });
+        }, isCancelled);
       }
 
       // Record search history with items discovered count (Requirements 1.3, 1.4, 1.5, 1.7)
@@ -296,9 +343,14 @@ export class ContentScanner implements IContentScanner {
     tagNames: string[],
     executedQueries: string[],
     onUrls: (urls: string[]) => Promise<void>,
-    onError: () => void
+    onError: () => void,
+    isCancelled: () => boolean
   ): Promise<void> {
     for (const keyword of keywords) {
+      if (isCancelled()) {
+        throw new Error('Scan stopped');
+      }
+
       try {
         executedQueries.push(this.buildSearchQuery(keyword, tagNames));
         const urls = await this.searchWithRetry(keyword, tagNames);
@@ -536,6 +588,13 @@ export class ContentScanner implements IContentScanner {
     }
 
     let score = 0;
+    const queryTokens = this.tokenize(queryText);
+    const specificQueryTokens = queryTokens.filter(
+      (token) =>
+        token.length >= 4 &&
+        !UFO_FOCUS_TERMS.includes(token) &&
+        !CONSPIRACY_TERMS.includes(token),
+    );
 
     if (this.containsAnyTerm(candidateText, UFO_FOCUS_TERMS)) {
       score += 8;
@@ -549,7 +608,6 @@ export class ContentScanner implements IContentScanner {
       score -= 9;
     }
 
-    const queryTokens = this.tokenize(`${queryText} ${candidate.title ?? ''}`);
     for (const token of queryTokens) {
       if (token.length < 3) {
         continue;
@@ -560,6 +618,15 @@ export class ContentScanner implements IContentScanner {
       }
     }
 
+    if (specificQueryTokens.length > 0) {
+      const matchedSpecificTokens = specificQueryTokens.filter((token) => candidateText.includes(token));
+      if (matchedSpecificTokens.length === 0) {
+        score -= 12;
+      } else {
+        score += matchedSpecificTokens.length * 3;
+      }
+    }
+
     const queryNeedsUfoContext = this.containsAnyTerm(queryText, [
       ...UFO_FOCUS_TERMS,
       ...CONSPIRACY_TERMS,
@@ -567,6 +634,14 @@ export class ContentScanner implements IContentScanner {
 
     if (queryNeedsUfoContext && !this.containsAnyTerm(candidateText, [...UFO_FOCUS_TERMS, ...CONSPIRACY_TERMS])) {
       score -= 10;
+    }
+
+    const hasOnlyFlyingSaucerContext =
+      this.containsAnyTerm(candidateText, ['flying saucer', 'flying saucers']) &&
+      !this.containsAnyTerm(candidateText, STRONG_UFO_TERMS);
+
+    if (hasOnlyFlyingSaucerContext) {
+      score -= 12;
     }
 
     return score;

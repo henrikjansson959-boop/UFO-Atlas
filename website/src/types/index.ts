@@ -14,6 +14,13 @@ export interface ContentItem {
   discoveredAt: string;
   status: ContentStatus;
   isPotentialDuplicate: boolean;
+  extractedText?: string;
+  people?: string[];
+  organizations?: string[];
+  caseTopics?: string[];
+  imageUrls?: string[];
+  relatedTopics?: string[];
+  followUpQueries?: string[];
   tags: Tag[];
 }
 

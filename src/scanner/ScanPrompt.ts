@@ -1,37 +1,3 @@
-const UFO_SCOPE_TERMS = [
-  'ufo',
-  'ufos',
-  'uap',
-  'uaps',
-  'alien',
-  'aliens',
-  'extraterrestrial',
-  'extraterrestrials',
-  'flying saucer',
-  'flying saucers',
-  'nhi',
-  'non-human intelligence',
-  'non human intelligence',
-  'sighting',
-  'sightings',
-  'abduction',
-  'abductions',
-  'roswell',
-  'aztec',
-  'area 51',
-  'aatip',
-  'aawsap',
-  'grusch',
-  'whistleblower',
-  'crash retrieval',
-  'reverse engineering',
-  'disclosure',
-  'cover-up',
-  'cover up',
-  'conspiracy',
-  'conspiracies',
-];
-
 const BLOCKED_PROMPT_TERMS = [
   'porn',
   'porno',
@@ -46,6 +12,19 @@ const BLOCKED_PROMPT_TERMS = [
   'heroin',
   'meth',
   'cartel',
+  'crime',
+  'criminal',
+  'violence',
+  'violent',
+  'weapon',
+  'weapons',
+  'shooting',
+  'kill',
+  'killing',
+  'assault',
+  'abuse',
+  'torture',
+  'war',
   'drug cartel',
   'drug trafficking',
   'rape',
@@ -133,7 +112,9 @@ export type ScanPromptParseFailure = {
   statusCode: number;
 };
 
-export function parseScanPrompt(rawPrompt: string): ScanPromptParseSuccess | ScanPromptParseFailure {
+export function parseScanPrompt(
+  rawPrompt: string,
+): ScanPromptParseSuccess | ScanPromptParseFailure {
   const normalizedPrompt = rawPrompt.replace(/\s+/g, ' ').trim();
 
   if (normalizedPrompt.length === 0) {
@@ -148,13 +129,6 @@ export function parseScanPrompt(rawPrompt: string): ScanPromptParseSuccess | Sca
   if (containsAnyTerm(lowerPrompt, BLOCKED_PROMPT_TERMS)) {
     return {
       error: 'This search request is blocked. The system does not run sexual, drug, violent, or criminal topic scans.',
-      statusCode: 400,
-    };
-  }
-
-  if (!containsAnyTerm(lowerPrompt, UFO_SCOPE_TERMS)) {
-    return {
-      error: 'This search is outside scope. Describe a UFO, UAP, alien, disclosure, crash, or whistleblower topic.',
       statusCode: 400,
     };
   }
@@ -180,10 +154,6 @@ function deriveKeywords(prompt: string): string[] {
     }
 
     keywords.push(token);
-  }
-
-  if (!keywords.some((keyword) => ['ufo', 'ufos', 'uap', 'uaps'].includes(keyword))) {
-    keywords.unshift('ufo');
   }
 
   if (

@@ -397,12 +397,19 @@ app.post('/api/content/:id/tags', asyncHandler(async (req: Request, res: Respons
 // SCAN TRIGGER ENDPOINT
 // ============================================================================
 
+let activeManualScan: { stopRequested: boolean } | null = null;
+
 /**
  * POST /api/scan/trigger
  * Trigger manual scan with tag filters
  * Validates: Requirements 8.6
  */
 app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) => {
+  if (activeManualScan) {
+    res.status(409).json({ error: 'A scan is already running' });
+    return;
+  }
+
   const {
     tagIds,
     selectedTagIds,
@@ -471,24 +478,50 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
       : await contentScanner.getActiveKeywords();
   
   // Execute scan
-  const result = await contentScanner.executeScan(
-    keywords,
-    normalizedTagIds,
-    savedSearchId,
-    undefined,
-    promptKeywords.length > 0
-      ? {
-          fallbackStrategy: 'none',
-          customQueries,
-        }
-      : undefined,
-  );
-  
-  res.json({
-    ...result,
-    aiAssistRequested: aiAssistWasRequested,
-    aiAssistApplied: aiAssistWasApplied,
-  });
+  activeManualScan = { stopRequested: false };
+
+  try {
+    const result = await contentScanner.executeScan(
+      keywords,
+      normalizedTagIds,
+      savedSearchId,
+      undefined,
+      {
+        ...(promptKeywords.length > 0
+          ? {
+              fallbackStrategy: 'none' as const,
+              customQueries,
+            }
+          : {}),
+        isCancelled: () => activeManualScan?.stopRequested === true,
+      },
+    );
+    
+    res.json({
+      ...result,
+      aiAssistRequested: aiAssistWasRequested,
+      aiAssistApplied: aiAssistWasApplied,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Scan stopped') {
+      res.status(409).json({ error: 'Scan stopped' });
+      return;
+    }
+
+    throw error;
+  } finally {
+    activeManualScan = null;
+  }
+}));
+
+app.post('/api/scan/stop', asyncHandler(async (_req: Request, res: Response) => {
+  if (!activeManualScan) {
+    res.status(404).json({ error: 'No active scan to stop' });
+    return;
+  }
+
+  activeManualScan.stopRequested = true;
+  res.json({ success: true, message: 'Stop requested' });
 }));
 
 // ============================================================================

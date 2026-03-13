@@ -62,7 +62,7 @@ export class DataValidator implements IDataValidator {
       }
     }
 
-    const moderationText = `${content.title} ${content.description} ${content.sourceUrl}`.toLowerCase();
+    const moderationText = `${content.title} ${content.description} ${content.extractedText ?? ''} ${content.sourceUrl}`.toLowerCase();
     if (this.BLOCKED_CONTENT_TERMS.some((term) => moderationText.includes(term))) {
       errors.push('Content blocked by safety filter');
     }

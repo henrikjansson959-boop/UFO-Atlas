@@ -148,6 +148,101 @@ describe('ContentExtractor', () => {
       expect(result?.contentType).toBe('news');
     });
 
+    it('should separate people from organizations and case topics', async () => {
+      const mockHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>'Age of Disclosure' documentary features Luis Elizondo on Amazon Prime</title>
+            <meta name="description" content="According to journalist Ross Coulthart, the documentary explores AATIP and other UFO cases.">
+          </head>
+          <body>
+            <article>
+              <p>According to journalist Ross Coulthart, Luis Elizondo appears in the documentary while Amazon Prime carries the release.</p>
+              <p>The film discusses AATIP and the broader Age of Disclosure narrative.</p>
+            </article>
+          </body>
+        </html>
+      `;
+
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+
+      const result = await extractor.extract('https://example.com/age-of-disclosure');
+
+      expect(result?.people).toEqual(expect.arrayContaining(['Luis Elizondo', 'Ross Coulthart']));
+      expect(result?.organizations).toEqual(expect.arrayContaining(['Amazon Prime', 'AATIP']));
+      expect(result?.caseTopics).toEqual(expect.arrayContaining(['Age of Disclosure']));
+      expect(result?.people).not.toEqual(expect.arrayContaining(['Amazon Prime']));
+    });
+
+    it('should extract follow-up queries from detected cases and people', async () => {
+      const mockHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Age of Disclosure case file</title>
+            <meta name="description" content="Luis Elizondo and AATIP are discussed in this UFO report.">
+          </head>
+          <body>
+            <article>
+              <p>Luis Elizondo said the Age of Disclosure story connects to AATIP.</p>
+            </article>
+          </body>
+        </html>
+      `;
+
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+
+      const result = await extractor.extract('https://example.com/case-file');
+
+      expect(result?.followUpQueries).toEqual(
+        expect.arrayContaining([
+          'Age of Disclosure case file',
+          '"Luis Elizondo" UFO UAP',
+          'AATIP UFO UAP',
+        ]),
+      );
+    });
+
+    it('should prefer relevant person or UFO images over generic gallery images', async () => {
+      const mockHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Luis Elizondo discusses UFO disclosure</title>
+            <meta name="description" content="Luis Elizondo speaks about UAP transparency.">
+            <meta property="og:image" content="https://cdn.example.com/gallery/random-collage.jpg">
+          </head>
+          <body>
+            <article>
+              <figure>
+                <img src="/images/luis-elizondo-portrait.jpg" alt="Luis Elizondo portrait" />
+              </figure>
+              <figure>
+                <img src="/images/random-party-scene.jpg" alt="party scene" />
+              </figure>
+              <figure>
+                <img src="/images/ufo-disc-image.jpg" alt="UFO disc photo" />
+              </figure>
+            </article>
+          </body>
+        </html>
+      `;
+
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+
+      const result = await extractor.extract('https://example.com/luis-story');
+
+      expect(result?.imageUrls).toEqual(
+        expect.arrayContaining([
+          'https://example.com/images/luis-elizondo-portrait.jpg',
+          'https://example.com/images/ufo-disc-image.jpg',
+        ]),
+      );
+      expect(result?.imageUrls).not.toContain('https://cdn.example.com/gallery/random-collage.jpg');
+      expect(result?.imageUrls).not.toContain('https://example.com/images/random-party-scene.jpg');
+    });
+
     it('should return null when title is missing', async () => {
       const mockHtml = `
         <!DOCTYPE html>
@@ -339,6 +434,7 @@ describe('ContentExtractor', () => {
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
       
       mockedAxios.get.mockRejectedValue(new Error('Network failure'));
+      mockedPuppeteer.launch.mockRejectedValue(new Error('Browser unavailable'));
 
       await extractor.extract('https://example.com/error');
 
@@ -454,6 +550,7 @@ describe('ContentExtractor', () => {
 
     it('should return null when extraction fails', async () => {
       mockedAxios.get.mockRejectedValue(new Error('Network error'));
+      mockedPuppeteer.launch.mockRejectedValue(new Error('Browser unavailable'));
 
       const contentId = await extractor.extractAndStore('https://example.com/error');
 
@@ -577,7 +674,7 @@ describe('ContentExtractor', () => {
     it('should log validation errors when validation fails', async () => {
       const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
       
-      const mockHtml = '<html><head><title></title></head></html>';
+      const mockHtml = '<html><head><title>Invalid Content</title></head></html>';
       mockedAxios.get.mockResolvedValue({ data: mockHtml });
       mockValidator.validate.mockReturnValue({
         isValid: false,

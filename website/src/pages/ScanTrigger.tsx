@@ -5,6 +5,12 @@ import type { Keyword, ScanResult, SystemStatus } from '../types';
 import { clearActiveScan, saveRecentScan, setActiveScan } from '../utils/recentScanStore';
 
 const AI_ASSIST_STORAGE_KEY = 'ufo-atlas-ai-assist-enabled';
+const LEGACY_SCOPE_ERROR = 'This search is outside scope. Describe a UFO, UAP, alien, disclosure, crash, or whistleblower topic.';
+
+function getScanErrorMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : 'Failed to run scan';
+  return message.includes(LEGACY_SCOPE_ERROR) ? 'Scan request could not be processed.' : message;
+}
 
 const ScanTrigger = () => {
   const [keywords, setKeywords] = useState<Keyword[]>([]);
@@ -14,6 +20,7 @@ const ScanTrigger = () => {
   const [promptText, setPromptText] = useState('');
   const [newKeyword, setNewKeyword] = useState('');
   const [scanning, setScanning] = useState(false);
+  const [stoppingScan, setStoppingScan] = useState(false);
   const [addingKeyword, setAddingKeyword] = useState(false);
   const [busyKeywordId, setBusyKeywordId] = useState<number | null>(null);
   const [deletingKeywordId, setDeletingKeywordId] = useState<number | null>(null);
@@ -55,6 +62,8 @@ const ScanTrigger = () => {
     () => keywords.filter((keyword) => keyword.isActive),
     [keywords],
   );
+  const trimmedPrompt = promptText.trim();
+  const usesPromptOnly = trimmedPrompt.length > 0;
 
   const loadKeywords = async (options?: { preserveNotice?: boolean }) => {
     try {
@@ -137,6 +146,7 @@ const ScanTrigger = () => {
   const handleScan = async () => {
     try {
       setScanning(true);
+      setStoppingScan(false);
       const startedAt = Date.now();
       setScanStartedAt(startedAt);
       setElapsedMs(0);
@@ -151,12 +161,13 @@ const ScanTrigger = () => {
 
       const result = await scanAPI.triggerScan({
         tagIds: [],
-        promptText: promptText.trim() || undefined,
+        keywordsUsed: usesPromptOnly ? [] : activeKeywords.map((keyword) => keyword.keywordText),
+        promptText: trimmedPrompt || undefined,
         aiAssistEnabled,
       });
 
       setScanResult(result);
-      saveRecentScan(result, promptText.trim());
+      saveRecentScan(result, trimmedPrompt);
       setNotice(
         result.discoveredUrls.length > 0
           ? `Scan completed with ${result.discoveredUrls.length} discovered URLs.`
@@ -164,10 +175,23 @@ const ScanTrigger = () => {
       );
       await loadSystemStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to run scan');
+      setError(getScanErrorMessage(err));
     } finally {
       setScanning(false);
+      setStoppingScan(false);
       clearActiveScan();
+    }
+  };
+
+  const handleStopScan = async () => {
+    try {
+      setStoppingScan(true);
+      setError(null);
+      await scanAPI.stopScan();
+      setNotice('Stopping scan...');
+    } catch (err) {
+      setStoppingScan(false);
+      setError(err instanceof Error ? err.message : 'Failed to stop scan');
     }
   };
 
@@ -200,13 +224,19 @@ const ScanTrigger = () => {
         <div className="page-heading">
           <span className="hero-badge">Scan</span>
           <h1>Scan</h1>
-          <p>Write a brief or use active keywords.</p>
+          <p>Write a brief for a focused scan, or leave it blank to use active keywords.</p>
         </div>
         <div className="ui-actions">
           <button type="button" onClick={() => { loadKeywords(); loadSystemStatus(); }} className="ui-button-secondary">
             <RefreshCcw size={15} />
             Refresh
           </button>
+          {scanning ? (
+            <button type="button" onClick={handleStopScan} disabled={stoppingScan} className="ui-button-danger">
+              <Power size={15} />
+              {stoppingScan ? 'Stopping...' : 'Stop'}
+            </button>
+          ) : null}
           <button type="button" onClick={handleScan} disabled={scanning} className="ui-button">
             <Radar size={15} />
             {scanning ? 'Scanning...' : 'Run scan'}
@@ -274,7 +304,7 @@ const ScanTrigger = () => {
         <div className="ui-panel-header">
           <div>
             <h2>Brief</h2>
-            <p>Blank = active keywords.</p>
+            <p>When filled in, the scan uses only this brief. Blank = active keywords.</p>
           </div>
           <button
             type="button"
@@ -313,7 +343,13 @@ const ScanTrigger = () => {
               AI assist {aiAssistEnabled ? 'on' : 'off'}
             </span>
             <span className="ui-badge muted">
-              {aiAssistEnabled ? 'Brief + keywords + AI plan' : 'Brief + keywords only'}
+              {usesPromptOnly
+                ? aiAssistEnabled
+                  ? 'Brief only + AI plan'
+                  : 'Brief only'
+                : aiAssistEnabled
+                  ? 'Active keywords + AI plan'
+                  : 'Active keywords only'}
             </span>
             {systemStatus && aiAssistEnabled && !systemStatus.ai.reachable && (
               <span className="ui-badge warn">AI on, but unavailable</span>
@@ -417,7 +453,7 @@ const ScanTrigger = () => {
             </div>
           </div>
           <div className="ui-pill-row">
-            <span className="ui-pill">Brief: {promptText.trim() || 'Active keywords'}</span>
+            <span className="ui-pill">Brief: {trimmedPrompt || 'Active keywords'}</span>
             <span className="ui-pill">AI: {scanResult.aiAssistApplied ? 'Used' : scanResult.aiAssistRequested ? 'Fallback' : 'Off'}</span>
             <span className="ui-pill">Keywords: {scanResult.keywordsUsed.join(', ') || 'None'}</span>
           </div>

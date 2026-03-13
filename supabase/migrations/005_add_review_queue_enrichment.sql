@@ -1,0 +1,6 @@
+ALTER TABLE Review_Queue
+ADD COLUMN IF NOT EXISTS extracted_text TEXT,
+ADD COLUMN IF NOT EXISTS people TEXT[] DEFAULT '{}'::TEXT[],
+ADD COLUMN IF NOT EXISTS image_urls TEXT[] DEFAULT '{}'::TEXT[],
+ADD COLUMN IF NOT EXISTS related_topics TEXT[] DEFAULT '{}'::TEXT[],
+ADD COLUMN IF NOT EXISTS follow_up_queries TEXT[] DEFAULT '{}'::TEXT[];

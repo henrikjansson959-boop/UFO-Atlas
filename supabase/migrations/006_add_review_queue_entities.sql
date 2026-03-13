@@ -1,0 +1,3 @@
+ALTER TABLE Review_Queue
+ADD COLUMN IF NOT EXISTS organizations TEXT[] DEFAULT '{}'::TEXT[],
+ADD COLUMN IF NOT EXISTS case_topics TEXT[] DEFAULT '{}'::TEXT[];

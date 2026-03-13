@@ -40,13 +40,15 @@ async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    // Try to extract error message from response body
     try {
       const errorData = await response.json();
       const errorMessage = errorData.error || response.statusText;
       throw new Error(errorMessage);
     } catch (parseError) {
-      // If JSON parsing fails, use status text
+      if (parseError instanceof Error && parseError.message !== response.statusText) {
+        throw parseError;
+      }
+
       throw new Error(response.statusText);
     }
   }
@@ -151,6 +153,11 @@ export const scanAPI = {
     return apiCall<ScanResult>('/scan/trigger', {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  },
+  stopScan: (): Promise<{ success: boolean; message: string }> => {
+    return apiCall<{ success: boolean; message: string }>('/scan/stop', {
+      method: 'POST',
     });
   },
 };

@@ -1,6 +1,5 @@
-import { Database, History, LayoutDashboard, Moon, Radar, Search, Sun, TriangleAlert } from 'lucide-react';
+import { History, LayoutDashboard, Radar, Search, TriangleAlert } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { useTheme } from './ThemeContext';
 
 const primaryNavItems = [
   { path: '/admin/review-queue', label: 'Queue', icon: LayoutDashboard },
@@ -13,21 +12,11 @@ const setupNavItems = [
   { path: '/admin/saved-searches', label: 'Saved', icon: Search },
 ] as const;
 
-const routeTitles: Record<string, string> = {
-  '/admin/review-queue': 'Review Queue',
-  '/admin/scan': 'Scan',
-  '/admin/saved-searches': 'Saved Searches',
-  '/admin/history': 'Run History',
-  '/admin/logs': 'Error Logs',
-};
-
 const AdminLayout = () => {
   const location = useLocation();
-  const { theme, toggleTheme } = useTheme();
-  const activeTitle = routeTitles[location.pathname] ?? 'Admin';
 
   return (
-    <div className="shell">
+    <div className="shell admin-shell">
       <div className="admin-frame">
         <aside className="admin-sidebar card-panel">
           <Link to="/" className="brand admin-brand">
@@ -107,30 +96,8 @@ const AdminLayout = () => {
         </aside>
 
         <section className="admin-main">
-          <header className="topbar topbar-panel admin-topbar">
-            <div className="admin-route-header">
-              <p className="eyebrow compact">UFO Atlas</p>
-              <h2 className="admin-topbar-title">{activeTitle}</h2>
-            </div>
-            <div className="header-actions">
-              <Link to="/admin/scan" className="ghost-button small">
-                <Radar size={15} />
-                Scan
-              </Link>
-              <Link to="/admin/review-queue" className="ghost-button small">
-                <Database size={15} />
-                Queue
-              </Link>
-              <button type="button" className="icon-button" onClick={toggleTheme} aria-label="Toggle theme">
-                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-              </button>
-            </div>
-          </header>
-
           <div className="admin-main-inner">
-            <div className="card-panel admin-content-panel">
-              <Outlet />
-            </div>
+            <Outlet />
           </div>
         </section>
       </div>

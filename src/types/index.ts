@@ -7,6 +7,13 @@ export interface ExtractedContent {
   sourceUrl: string;
   contentType: 'event' | 'person' | 'theory' | 'news';
   rawHtml: string;
+  extractedText?: string;
+  people?: string[];
+  organizations?: string[];
+  caseTopics?: string[];
+  imageUrls?: string[];
+  relatedTopics?: string[];
+  followUpQueries?: string[];
 }
 
 export interface ContentItem {
@@ -20,6 +27,13 @@ export interface ContentItem {
   discoveredAt: Date;
   status: string;
   isPotentialDuplicate: boolean;
+  extractedText?: string;
+  people?: string[];
+  organizations?: string[];
+  caseTopics?: string[];
+  imageUrls?: string[];
+  relatedTopics?: string[];
+  followUpQueries?: string[];
   tags: Tag[];
 }
 
@@ -88,6 +102,7 @@ export interface ScanResult {
 export interface ScanExecutionOptions {
   fallbackStrategy?: 'per-keyword' | 'none';
   customQueries?: string[];
+  isCancelled?: () => boolean;
 }
 
 export interface ValidationResult {

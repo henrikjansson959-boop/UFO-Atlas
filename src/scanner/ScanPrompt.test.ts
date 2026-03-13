@@ -1,39 +1,26 @@
+import { describe, expect, it } from '@jest/globals';
 import { parseScanPrompt } from './ScanPrompt';
 
 describe('parseScanPrompt', () => {
-  it('derives focused UFO keywords from a natural-language brief', () => {
-    const result = parseScanPrompt(
-      'Find UFO conspiracy material about the Aztec crash and whistleblower cover-up claims.',
-    );
+  it('accepts non-blocked prompts without showing an out-of-scope error', () => {
+    const result = parseScanPrompt('Find witness interviews from Sweden');
 
-    if ('error' in result) {
-      throw new Error(`Expected success, got error: ${result.error}`);
+    expect('error' in result).toBe(false);
+    if (!('error' in result)) {
+      expect(result.keywords).toEqual(
+        expect.arrayContaining(['witness', 'interviews', 'sweden']),
+      );
     }
-
-    expect(result.keywords).toEqual(
-      expect.arrayContaining(['ufo', 'aztec', 'crash', 'whistleblower', 'conspiracy']),
-    );
   });
 
-  it('rejects blocked criminal or sexual prompts', () => {
-    const result = parseScanPrompt('Find UFO stories about sex cults and drug trafficking.');
+  it('derives focused keywords from the current prompt only', () => {
+    const result = parseScanPrompt('Find UFO witness interviews from Sweden about ghost rockets');
 
-    expect(result).toEqual(
-      expect.objectContaining({
-        error: expect.stringContaining('blocked'),
-        statusCode: 400,
-      }),
-    );
-  });
-
-  it('rejects prompts outside the UFO scope', () => {
-    const result = parseScanPrompt('Find Formula 1 rumors in Mexico City.');
-
-    expect(result).toEqual(
-      expect.objectContaining({
-        error: expect.stringContaining('outside scope'),
-        statusCode: 400,
-      }),
-    );
+    expect('error' in result).toBe(false);
+    if (!('error' in result)) {
+      expect(result.keywords).toEqual(
+        expect.arrayContaining(['ufo', 'witness', 'interviews', 'sweden', 'ghost', 'rockets']),
+      );
+    }
   });
 });

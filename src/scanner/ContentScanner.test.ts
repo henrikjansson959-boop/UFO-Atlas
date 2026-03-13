@@ -71,6 +71,9 @@ class MockContentExtractor implements Partial<ContentExtractor> {
       sourceUrl: url,
       contentType: 'news',
       rawHtml: '<html></html>',
+      followUpQueries: url.includes('age-of-disclosure')
+        ? ['"Age of Disclosure" UFO UAP']
+        : [],
     };
   }
 
@@ -185,9 +188,35 @@ describe('ContentScanner', () => {
 
       const result = await scanner.executeScan(['UFO'], [1]);
 
-      expect(mockExtractor.extractedUrls).toEqual(['https://example.com/ufo-story']);
+      expect(mockExtractor.extractedUrls).toEqual([
+        'https://example.com/ufo-story',
+        'https://example.com/ufo-story',
+      ]);
       expect(result.discoveredUrls).toEqual(['https://example.com/ufo-story']);
       expect(result.errorCount).toBe(0);
+    });
+
+    it('should run bounded follow-up searches from extracted content leads', async () => {
+      scanner.setContentExtractor(mockExtractor as any);
+      mockSearchProvider.mockImplementation(async (query) => {
+        if (query.includes('Age of Disclosure')) {
+          return [{
+            url: 'https://example.com/age-of-disclosure-case-file',
+            title: 'Age of Disclosure UFO case file',
+          }];
+        }
+
+        return [{
+          url: 'https://example.com/age-of-disclosure-initial',
+          title: 'Age of Disclosure UFO report',
+        }];
+      });
+
+      const result = await scanner.executeScan(['UFO'], []);
+
+      expect(result.discoveredUrls).toContain('https://example.com/age-of-disclosure-initial');
+      expect(result.discoveredUrls).toContain('https://example.com/age-of-disclosure-case-file');
+      expect(result.queriesUsed.some((query) => query.includes('Age of Disclosure'))).toBe(true);
     });
 
     it('should filter out irrelevant 3D and motorsport URLs', async () => {

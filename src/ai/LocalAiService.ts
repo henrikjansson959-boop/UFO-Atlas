@@ -68,15 +68,21 @@ export class LocalAiService {
     }
 
     const prompt = [
-      'You are building a broad UFO discovery search plan for an editorial intake system.',
+      'You are building a UFO/UAP/theory discovery search plan for an editorial intake system.',
       'Return only valid JSON with this shape:',
       '{"keywords":["..."],"queries":["..."]}',
       'Rules:',
-      '- Keep it broad and discovery-oriented.',
-      '- Focus on UFO, UAP, alien, disclosure, sightings, crash cases, whistleblowers, historical incidents.',
-      '- Do not include sexual, criminal, drug, or violent topics.',
+      '- Primary goal: fulfill the user request exactly and stay on topic.',
+      '- If the brief names a place, country, person, event, or theme, keep the output centered on that exact scope.',
+      '- Example: if the brief says Sweden, keep the plan about Sweden. Do not drift to other countries unless the brief explicitly asks for comparison.',
+      '- Focus only on UFO, UAP, alien, disclosure, sightings, crash retrieval claims, whistleblowers, historical incidents, and theories/conspiracies related to those topics.',
+      '- Keep it discovery-oriented but still faithful to the brief.',
+      '- Do not include sexual, criminal, violent, war, gore, weapons, drug, or abuse topics.',
+      '- Do not broaden into general politics, crime news, celebrity gossip, or unrelated current events.',
       '- Produce 4 to 8 search queries.',
       '- Produce 4 to 10 concise keywords.',
+      '- Keywords and queries must reflect the brief, not just the base keywords.',
+      '- Prefer theory/UFO/UAP phrasing over generic news phrasing.',
       `Brief: ${brief}`,
       `Base keywords: ${keywords.join(', ') || 'none'}`,
     ].join('\n');

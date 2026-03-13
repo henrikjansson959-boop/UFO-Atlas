@@ -3,11 +3,161 @@ import * as cheerio from 'cheerio';
 import axios from 'axios';
 import { ExtractedContent, DataValidator, DuplicateDetector, StorageService } from '../types';
 
+const KNOWN_UFO_PEOPLE = [
+  'David Grusch',
+  'Luis Elizondo',
+  'Ross Coulthart',
+  'Jesse Marcel',
+  'Bob Lazar',
+  'Philip Corso',
+  'Jacques Vallee',
+  'Steven Greer',
+  'Ryan Graves',
+  'David Fravor',
+  'Travis Walton',
+  'George Knapp',
+];
+
+const PERSON_BLOCKLIST = new Set([
+  'New Mexico',
+  'United States',
+  'Mexico City',
+  'The Pentagon',
+  'The Guardian',
+  'Daily Mail',
+  'New York Times',
+  'Area 51',
+  'Project Blue',
+  'Project Blue Book',
+  'Phoenix Lights',
+  'Flying Saucer',
+  'Non Human',
+  'White House',
+]);
+
+const PERSON_BLOCKLIST_FRAGMENTS = [
+  'program',
+  'phenomena',
+  'threat',
+  'identification',
+  'aerospace',
+  'department',
+  'office',
+  'congress',
+  'pentagon',
+  'festival',
+  'documentary',
+  'uap',
+  'ufo',
+];
+
+const ORGANIZATION_HINTS = [
+  'news',
+  'times',
+  'guardian',
+  'prime',
+  'netflix',
+  'amazon',
+  'youtube',
+  'congress',
+  'pentagon',
+  'department',
+  'office',
+  'program',
+  'phenomena',
+  'force',
+  'command',
+  'agency',
+  'committee',
+  'ministry',
+  'studio',
+  'channel',
+];
+
+const PERSON_CONTEXT_HINTS = [
+  'said',
+  'says',
+  'according to',
+  'told',
+  'wrote',
+  'hosted by',
+  'directed by',
+  'starring',
+  'journalist',
+  'reporter',
+  'researcher',
+  'investigator',
+  'officer',
+  'pilot',
+  'witness',
+  'whistleblower',
+  'president',
+  'senator',
+  'representative',
+  'dr.',
+  'mr.',
+  'ms.',
+];
+
+const IMAGE_ALLOWED_HINTS = [
+  'portrait',
+  'profile',
+  'headshot',
+  'person',
+  'people',
+  'logo',
+  'seal',
+  'emblem',
+  'ufo',
+  'uap',
+  'alien',
+  'saucer',
+  'disclosure',
+  'whistleblower',
+  'aatip',
+  'aawsap',
+  'roswell',
+  'aztec',
+  'nimitz',
+];
+
+const IMAGE_BLOCKLIST_HINTS = [
+  'sprite',
+  'thumbnail',
+  'advert',
+  'banner',
+  'promo',
+  'swimsuit',
+  'bikini',
+  'nude',
+  'sex',
+  'escort',
+  'cartoon',
+  'meme',
+  'gif',
+];
+
+const CASE_TOPICS = [
+  'Roswell',
+  'Aztec',
+  'Rendlesham',
+  'Phoenix Lights',
+  'Nimitz',
+  'Tic Tac',
+  'Area 51',
+  'AATIP',
+  'AAWSAP',
+  'Project Blue Book',
+  'Majestic 12',
+  'Age of Disclosure',
+];
+
 export class ContentExtractor {
   private browser: Browser | null = null;
   private validator: DataValidator | null = null;
   private duplicateDetector: DuplicateDetector | null = null;
   private storageService: StorageService | null = null;
+  private readonly extractionCache = new Map<string, ExtractedContent>();
 
   /**
    * Set the validator for content validation
@@ -47,8 +197,8 @@ export class ContentExtractor {
    * - Requirement 10.1: Validate content before storage
    */
   async extractAndStore(url: string): Promise<number | null> {
-    // Extract content
-    const content = await this.extract(url);
+    const cachedContent = this.extractionCache.get(url);
+    const content = cachedContent ?? await this.extract(url);
     if (!content) {
       this.logError('extractAndStore', url, new Error('Extraction failed'));
       return null;
@@ -88,6 +238,7 @@ export class ContentExtractor {
         content,
         duplicateCheck.isPotentialDuplicate
       );
+      this.extractionCache.delete(url);
       
       if (duplicateCheck.isPotentialDuplicate) {
         this.logPotentialDuplicate(url, contentId, duplicateCheck.similarityScore);
@@ -95,6 +246,7 @@ export class ContentExtractor {
       
       return contentId;
     } catch (error) {
+      this.extractionCache.delete(url);
       this.logError('extractAndStore', url, error);
       return null;
     }
@@ -109,12 +261,17 @@ export class ContentExtractor {
       // Try static HTML parsing first (faster)
       const staticResult = await this.extractWithCheerio(url);
       if (staticResult) {
+        this.extractionCache.set(url, staticResult);
         return staticResult;
       }
 
       // Fall back to Puppeteer for JavaScript-heavy sites
       console.log(`Static extraction failed for ${url}, trying Puppeteer...`);
-      return await this.extractWithPuppeteer(url);
+      const puppeteerResult = await this.extractWithPuppeteer(url);
+      if (puppeteerResult) {
+        this.extractionCache.set(url, puppeteerResult);
+      }
+      return puppeteerResult;
     } catch (error) {
       this.logError('extract', url, error);
       return null;
@@ -199,9 +356,16 @@ export class ContentExtractor {
     sourceUrl: string
   ): ExtractedContent {
     const title = this.extractTitle($);
-    const description = this.extractDescription($);
+    const extractedText = this.extractArticleText($);
+    const description = this.extractDescription($, extractedText);
     const eventDate = this.extractDate($);
-    const contentType = this.classifyContentType($, title, description);
+    const contentType = this.classifyContentType($, title, description, extractedText);
+    const organizations = this.extractOrganizations(title, description, extractedText);
+    const people = this.extractPeople(title, description, extractedText, organizations);
+    const caseTopics = this.extractCaseTopics(title, description, extractedText, people, organizations);
+    const imageUrls = this.extractImageUrls($, sourceUrl, title, description, people, organizations, caseTopics);
+    const relatedTopics = [...caseTopics, ...organizations];
+    const followUpQueries = this.buildFollowUpQueries(title, contentType, people, organizations, caseTopics);
 
     return {
       title,
@@ -209,7 +373,14 @@ export class ContentExtractor {
       eventDate,
       sourceUrl,
       contentType,
-      rawHtml
+      rawHtml,
+      extractedText,
+      people,
+      organizations,
+      caseTopics,
+      imageUrls,
+      relatedTopics,
+      followUpQueries,
     };
   }
 
@@ -249,7 +420,7 @@ export class ContentExtractor {
    * Extract description from HTML
    * Tries multiple strategies: og:description, meta description, first paragraph
    */
-  private extractDescription($: cheerio.CheerioAPI): string {
+  private extractDescription($: cheerio.CheerioAPI, extractedText: string): string {
     // Try Open Graph description
     let description = $('meta[property="og:description"]').attr('content');
     if (description && description.trim().length > 0) {
@@ -274,7 +445,37 @@ export class ContentExtractor {
       return description.trim();
     }
 
-    return '';
+    return extractedText.slice(0, 320).trim();
+  }
+
+  private extractArticleText($: cheerio.CheerioAPI): string {
+    const selectors = [
+      'article p',
+      'main p',
+      '[role="main"] p',
+      '.article-body p',
+      '.entry-content p',
+      '.post-content p',
+      '.story-body p',
+    ];
+
+    for (const selector of selectors) {
+      const text = this.collectParagraphText($, selector);
+      if (text.length >= 220) {
+        return text;
+      }
+    }
+
+    return this.collectParagraphText($, 'p');
+  }
+
+  private collectParagraphText($: cheerio.CheerioAPI, selector: string): string {
+    const paragraphs = $(selector)
+      .map((_, node) => $(node).text().replace(/\s+/g, ' ').trim())
+      .get()
+      .filter((text) => text.length >= 40);
+
+    return Array.from(new Set(paragraphs)).join(' ').slice(0, 1800).trim();
   }
 
   /**
@@ -335,9 +536,10 @@ export class ContentExtractor {
   private classifyContentType(
     _$: cheerio.CheerioAPI,
     title: string,
-    description: string
+    description: string,
+    extractedText: string
   ): 'event' | 'person' | 'theory' | 'news' {
-    const text = `${title} ${description}`.toLowerCase();
+    const text = `${title} ${description} ${extractedText}`.toLowerCase();
 
     // Event indicators
     const eventKeywords = [
@@ -392,6 +594,324 @@ export class ContentExtractor {
    */
   private countKeywordMatches(text: string, keywords: string[]): number {
     return keywords.filter(keyword => text.includes(keyword)).length;
+  }
+
+  private extractPeople(title: string, description: string, extractedText: string, organizations: string[]): string[] {
+    const text = `${title}. ${description}. ${extractedText}`.replace(/\s+/g, ' ');
+    const candidates: string[] = [];
+    const organizationSet = new Set(organizations.map((value) => value.toLowerCase()));
+
+    for (const knownPerson of KNOWN_UFO_PEOPLE) {
+      if (text.toLowerCase().includes(knownPerson.toLowerCase())) {
+        candidates.push(knownPerson);
+      }
+    }
+
+    const regexMatches = Array.from(
+      text.matchAll(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b/g),
+      (match) => match[0].trim(),
+    );
+
+    for (const match of regexMatches) {
+      const normalizedMatch = match.toLowerCase();
+      if (
+        PERSON_BLOCKLIST.has(match) ||
+        organizationSet.has(normalizedMatch) ||
+        PERSON_BLOCKLIST_FRAGMENTS.some((fragment) => normalizedMatch.includes(fragment)) ||
+        normalizedMatch.startsWith('the ') ||
+        this.looksLikeOrganization(match) ||
+        !this.hasPersonContext(text, match) ||
+        /\d/.test(match)
+      ) {
+        continue;
+      }
+
+      candidates.push(match);
+    }
+
+    return Array.from(new Set(candidates))
+      .filter((candidate) => candidate.length >= 6 && candidate.length <= 40)
+      .slice(0, 8);
+  }
+
+  private extractOrganizations(title: string, description: string, extractedText: string): string[] {
+    const text = `${title}. ${description}. ${extractedText}`.replace(/\s+/g, ' ');
+    const candidates = Array.from(
+      text.matchAll(/\b(?:[A-Z][a-z]+|[A-Z]{2,})(?:\s+(?:[A-Z][a-z]+|[A-Z]{2,})){0,4}\b/g),
+      (match) => match[0].trim(),
+    );
+
+    const organizations = candidates.filter((candidate) => {
+      const normalized = candidate.toLowerCase();
+      if (PERSON_BLOCKLIST.has(candidate) || KNOWN_UFO_PEOPLE.some((person) => person.toLowerCase() === normalized)) {
+        return false;
+      }
+
+      return this.looksLikeOrganization(candidate);
+    });
+
+    return Array.from(new Set(organizations)).slice(0, 8);
+  }
+
+  private extractImageUrls(
+    $: cheerio.CheerioAPI,
+    sourceUrl: string,
+    title: string,
+    description: string,
+    people: string[],
+    organizations: string[],
+    caseTopics: string[],
+  ): string[] {
+    const articleContext = `${title} ${description} ${people.join(' ')} ${organizations.join(' ')} ${caseTopics.join(' ')}`.toLowerCase();
+    const candidates: Array<{ url: string; score: number }> = [];
+
+    const pushCandidate = (rawUrl: string | undefined, context: string, baseScore: number) => {
+      const normalizedUrl = this.normalizeUrl(rawUrl ?? '', sourceUrl);
+      if (!normalizedUrl || normalizedUrl.startsWith('data:') || normalizedUrl.endsWith('.svg')) {
+        return;
+      }
+
+      const topicalScore = this.scoreImageCandidate(normalizedUrl, context, articleContext, people, organizations, caseTopics);
+      if (baseScore > 0 && topicalScore < 2) {
+        return;
+      }
+
+      const score = topicalScore + baseScore;
+      if (score < 4) {
+        return;
+      }
+
+      candidates.push({ url: normalizedUrl, score });
+    };
+
+    pushCandidate($('meta[property="og:image"]').attr('content'), 'og:image', 4);
+    pushCandidate($('meta[name="twitter:image"]').attr('content'), 'twitter:image', 4);
+    pushCandidate($('link[rel="image_src"]').attr('href'), 'image_src', 3);
+
+    $('article img, main img, img')
+      .slice(0, 14)
+      .each((_, node) => {
+        const element = $(node);
+        const rawUrl = element.attr('src') || element.attr('data-src') || element.attr('data-lazy-src') || '';
+        const altText = element.attr('alt') || '';
+        const titleText = element.attr('title') || '';
+        const classText = element.attr('class') || '';
+        const figureText = element.closest('figure').text() || element.parent().text() || '';
+        const context = `${altText} ${titleText} ${classText} ${figureText}`.replace(/\s+/g, ' ').trim();
+        pushCandidate(rawUrl, context, 0);
+      });
+
+    return Array.from(
+      new Map(
+        candidates
+          .sort((left, right) => right.score - left.score)
+          .map((candidate) => [candidate.url, candidate]),
+      ).values(),
+    )
+      .map((candidate) => candidate.url)
+      .slice(0, 4);
+  }
+
+  private scoreImageCandidate(
+    imageUrl: string,
+    imageContext: string,
+    articleContext: string,
+    people: string[],
+    organizations: string[],
+    caseTopics: string[],
+  ): number {
+    const combined = `${imageUrl} ${imageContext}`.toLowerCase();
+    let score = 0;
+
+    if (IMAGE_BLOCKLIST_HINTS.some((hint) => combined.includes(hint))) {
+      score -= 8;
+    }
+
+    if (IMAGE_ALLOWED_HINTS.some((hint) => combined.includes(hint))) {
+      score += 4;
+    }
+
+    if (/(logo|seal|emblem|avatar|headshot|portrait|profile)/.test(combined)) {
+      score += 3;
+    }
+
+    if (this.matchesEntityInImage(combined, people)) {
+      score += 6;
+    }
+
+    if (this.matchesEntityInImage(combined, organizations)) {
+      score += 5;
+    }
+
+    if (this.matchesEntityInImage(combined, caseTopics)) {
+      score += 5;
+    }
+
+    const articleTokens = Array.from(new Set(articleContext.match(/[a-z0-9]{4,}/g) ?? [])).slice(0, 20);
+    for (const token of articleTokens) {
+      if (combined.includes(token)) {
+        score += 1;
+      }
+    }
+
+    return score;
+  }
+
+  private matchesEntityInImage(combinedText: string, entities: string[]): boolean {
+    return entities.some((entity) => {
+      const normalizedEntity = entity.toLowerCase();
+      const entityTokens = normalizedEntity.split(/\s+/).filter((token) => token.length >= 3);
+      return entityTokens.some((token) => combinedText.includes(token));
+    });
+  }
+
+  private extractCaseTopics(
+    title: string,
+    description: string,
+    extractedText: string,
+    people: string[],
+    organizations: string[],
+  ): string[] {
+    const text = `${title}. ${description}. ${extractedText}`;
+    const topics: string[] = [];
+    const cleanedTitle = this.cleanTopicLabel(title);
+
+    for (const caseTopic of CASE_TOPICS) {
+      if (text.toLowerCase().includes(caseTopic.toLowerCase())) {
+        topics.push(caseTopic);
+      }
+    }
+
+    if (this.looksLikeCaseTopic(cleanedTitle)) {
+      topics.push(cleanedTitle);
+    }
+
+    for (const phrase of this.extractQuotedTopics(text)) {
+      if (this.looksLikeCaseTopic(phrase)) {
+        topics.push(phrase);
+      }
+    }
+
+    for (const organization of organizations) {
+      if (/aatip|aawsap|project blue book|cia|nasa|dod/i.test(organization)) {
+        topics.push(organization);
+      }
+    }
+
+    return Array.from(new Set(topics))
+      .filter((topic) => topic.length >= 3 && !people.some((person) => person.toLowerCase() === topic.toLowerCase()))
+      .slice(0, 6);
+  }
+
+  private buildFollowUpQueries(
+    title: string,
+    contentType: 'event' | 'person' | 'theory' | 'news',
+    people: string[],
+    organizations: string[],
+    caseTopics: string[],
+  ): string[] {
+    const queries: string[] = [];
+    const cleanedTitle = this.cleanTopicLabel(title);
+
+    if (cleanedTitle.length >= 8 && this.looksLikeCaseTopic(cleanedTitle)) {
+      queries.push(this.toUfoFollowUpQuery(cleanedTitle, contentType));
+    }
+
+    for (const topic of caseTopics) {
+      queries.push(this.toUfoFollowUpQuery(topic, contentType));
+    }
+
+    for (const person of people) {
+      queries.push(`"${person}" UFO UAP`);
+    }
+
+    for (const organization of organizations) {
+      if (/aatip|aawsap|project blue book|cia|nasa|dod/i.test(organization)) {
+        queries.push(`${organization} UFO UAP`);
+      }
+    }
+
+    return Array.from(new Set(queries))
+      .filter((query) => query.trim().length > 0)
+      .slice(0, 6);
+  }
+
+  private toUfoFollowUpQuery(topic: string, contentType: 'event' | 'person' | 'theory' | 'news'): string {
+    const normalizedTopic = topic.replace(/\s+/g, ' ').trim();
+    const lowerTopic = normalizedTopic.toLowerCase();
+
+    if (/(ufo|uap|alien|disclosure|whistleblower|saucer|extraterrestrial)/.test(lowerTopic)) {
+      return normalizedTopic;
+    }
+
+    if (contentType === 'person') {
+      return `"${normalizedTopic}" UFO UAP`;
+    }
+
+    return `${normalizedTopic} UFO UAP`;
+  }
+
+  private cleanTopicLabel(value: string): string {
+    return value
+      .replace(/\s+[|:-]\s+[^|:-]{1,40}$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private looksLikeOrganization(value: string): boolean {
+    const normalized = value.toLowerCase();
+    return /^[A-Z]{2,}$/.test(value) || ORGANIZATION_HINTS.some((hint) => normalized.includes(hint));
+  }
+
+  private hasPersonContext(text: string, candidate: string): boolean {
+    const normalizedText = text.toLowerCase();
+    const normalizedCandidate = candidate.toLowerCase();
+    const candidateIndex = normalizedText.indexOf(normalizedCandidate);
+    if (candidateIndex === -1) {
+      return false;
+    }
+
+    const windowStart = Math.max(0, candidateIndex - 48);
+    const windowEnd = Math.min(normalizedText.length, candidateIndex + normalizedCandidate.length + 48);
+    const contextWindow = normalizedText.slice(windowStart, windowEnd);
+
+    return PERSON_CONTEXT_HINTS.some((hint) => contextWindow.includes(hint));
+  }
+
+  private looksLikeCaseTopic(value: string): boolean {
+    const normalized = value.toLowerCase();
+    if (normalized.length < 4 || normalized.length > 120) {
+      return false;
+    }
+
+    if (this.looksLikeOrganization(value)) {
+      return false;
+    }
+
+    return (
+      CASE_TOPICS.some((topic) => normalized.includes(topic.toLowerCase())) ||
+      /(case|incident|encounter|disclosure|retrieval|sighting|documentary|program|hearing|files)/.test(normalized)
+    );
+  }
+
+  private extractQuotedTopics(text: string): string[] {
+    return Array.from(
+      text.matchAll(/["“”']([^"“”']{5,90})["“”']/g),
+      (match) => this.cleanTopicLabel(match[1] ?? ''),
+    ).filter(Boolean);
+  }
+
+  private normalizeUrl(value: string, sourceUrl: string): string | null {
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+      return null;
+    }
+
+    try {
+      return new URL(trimmedValue, sourceUrl).toString();
+    } catch {
+      return null;
+    }
   }
 
   /**

@@ -122,9 +122,13 @@ const SearchHistory = () => {
 
       <div className="ui-table-panel">
         {history.length === 0 ? (
-          <div className="ui-empty">
-            <p>No search history found</p>
-          </div>
+          <section className="history-empty-state">
+            <div className="history-empty-copy">
+              <span className="queue-loading-kicker">No runs yet</span>
+              <h2>Search history is empty.</h2>
+              <p>Run a scan and the details will show up here, including duration, topics, and discovered URLs.</p>
+            </div>
+          </section>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="ui-table">
@@ -262,7 +266,9 @@ const SearchHistory = () => {
         )}
       </div>
 
-      <p className="ui-table-footnote">Showing {history.length} search history entries.</p>
+      {history.length > 0 ? (
+        <p className="ui-table-footnote">Showing {history.length} search history entries.</p>
+      ) : null}
     </div>
   );
 };

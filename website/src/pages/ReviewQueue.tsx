@@ -1,11 +1,13 @@
-import { Filter, RefreshCcw } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight, Filter, RefreshCcw } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import ContentItemCard from '../components/ContentItemCard';
 import TagAssignmentModal from '../components/TagAssignmentModal';
 import { reviewQueueAPI, tagAPI } from '../services/api';
 import type { ContentItem, ContentType, TagGroup } from '../types';
 
 const contentTypes: Array<ContentType | 'all'> = ['all', 'event', 'person', 'theory', 'news'];
+const ITEMS_PER_PAGE = 10;
+const loadingRows = Array.from({ length: 3 }, (_, index) => index);
 
 const ReviewQueue = () => {
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
@@ -17,10 +19,22 @@ const ReviewQueue = () => {
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
   const [showTagModal, setShowTagModal] = useState(false);
   const [busyItemId, setBusyItemId] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     loadData();
   }, [selectedContentType]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedContentType]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(contentItems.length / ITEMS_PER_PAGE));
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [contentItems.length, currentPage]);
 
   const loadData = async () => {
     try {
@@ -111,8 +125,50 @@ const ReviewQueue = () => {
     }
   };
 
+  const totalPages = Math.max(1, Math.ceil(contentItems.length / ITEMS_PER_PAGE));
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, contentItems.length);
+  const visibleItems = useMemo(
+    () => contentItems.slice(startIndex, endIndex),
+    [contentItems, startIndex, endIndex],
+  );
+  const visibleDuplicateCount = useMemo(
+    () => visibleItems.filter((item) => item.isPotentialDuplicate).length,
+    [visibleItems],
+  );
+
   if (loading) {
-    return <div className="ui-empty"><p>Loading review queue...</p></div>;
+    return (
+      <div className="queue-loading-state" aria-live="polite" aria-busy="true">
+        <div className="queue-loading-header">
+          <span className="queue-loading-kicker">Review queue</span>
+          <h2>Loading items</h2>
+          <p>Pulling the latest entries and rebuilding the list.</p>
+        </div>
+
+        <div className="queue-loading-list">
+          {loadingRows.map((row) => (
+            <div key={row} className="queue-loading-row">
+              <div className="queue-loading-media skeleton-block" />
+              <div className="queue-loading-copy">
+                <div className="queue-loading-pills">
+                  <span className="skeleton-pill" />
+                  <span className="skeleton-pill" />
+                  <span className="skeleton-pill short" />
+                </div>
+                <div className="skeleton-line title" />
+                <div className="skeleton-line" />
+                <div className="skeleton-line medium" />
+                <div className="queue-loading-meta">
+                  <span className="skeleton-pill short" />
+                  <span className="skeleton-pill short" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (error) {
@@ -134,34 +190,28 @@ const ReviewQueue = () => {
 
   return (
     <div className="ui-stack">
-      <div className="page-header">
-        <div className="page-heading">
-          <span className="hero-badge">Moderation</span>
-          <h1>Review queue</h1>
-          <p>{contentItems.length} pending items.</p>
-        </div>
-        <button type="button" onClick={loadData} className="ui-button-secondary">
-          <RefreshCcw size={15} />
-          Refresh
-        </button>
-      </div>
-
       {notice && (
         <div className="ui-note">
           <p>{notice}</p>
         </div>
       )}
 
-      <div className="ui-filter-bar">
+      <div className="ui-filter-bar review-queue-filter-bar">
         <div className="review-toolbar">
           <div className="compact-summary">
             <h3>Filter</h3>
-            <p>Content type</p>
+            <p>Content type lane</p>
           </div>
-          <span className="ui-badge muted">
-            <Filter size={14} />
-            {contentItems.length} items visible
-          </span>
+          <div className="ui-actions">
+            <span className="ui-badge muted">
+              <Filter size={14} />
+              {contentItems.length} items visible
+            </span>
+            <button type="button" onClick={loadData} className="ui-button-secondary">
+              <RefreshCcw size={15} />
+              Refresh
+            </button>
+          </div>
         </div>
         <div className="ui-pill-row">
           {contentTypes.map((type) => (
@@ -178,15 +228,16 @@ const ReviewQueue = () => {
       </div>
 
       {contentItems.length === 0 ? (
-        <div className="ui-empty">
-          <p>
-            No pending items
-            {selectedContentType !== 'all' && ` for type "${selectedContentType}"`}.
-          </p>
-        </div>
+        <section className="review-queue-empty">
+          <div className="review-queue-empty-copy">
+            <span className="queue-loading-kicker">Queue clear</span>
+            <h2>No pending items{selectedContentType !== 'all' ? ` for "${selectedContentType}"` : ''}.</h2>
+            <p>The review queue is empty right now. Run a scan or switch the filter to check other content types.</p>
+          </div>
+        </section>
       ) : (
         <div className="ui-stack">
-          {contentItems.map((item) => (
+          {visibleItems.map((item) => (
             <ContentItemCard
               key={item.contentId}
               item={item}
@@ -196,6 +247,40 @@ const ReviewQueue = () => {
               busy={busyItemId === item.contentId}
             />
           ))}
+
+          <div className="ui-filter-bar review-queue-footer">
+            <div className="review-toolbar">
+              <div className="compact-summary">
+                <h3>Page</h3>
+                <p>
+                  Showing {startIndex + 1}-{endIndex} of {contentItems.length}
+                </p>
+              </div>
+              <span className="ui-badge muted">
+                Page {currentPage} of {totalPages}
+              </span>
+            </div>
+            <div className="ui-actions">
+              <button
+                type="button"
+                className="ghost-button small"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={currentPage === 1}
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                type="button"
+                className="ghost-button small"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={currentPage === totalPages}
+                aria-label="Next page"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
