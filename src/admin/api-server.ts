@@ -6,12 +6,13 @@ import { ContentScanner } from '../scanner/ContentScanner';
 import { ContentExtractor } from '../extractor/ContentExtractor';
 import { DuplicateDetector } from '../duplicate/DuplicateDetector';
 import { ErrorLogger } from '../logger/ErrorLogger';
-import { ContentFilters } from '../types';
+import { AdminCaseInput, AdminPersonInput, ContentFilters } from '../types';
 import { CronValidator } from '../scheduler/cronValidator';
 import { DataValidator } from '../validator/DataValidator';
 import { createScheduleRoutes } from './scheduleRoutes';
-import { parseScanPrompt } from '../scanner/ScanPrompt';
 import { LocalAiService } from '../ai/LocalAiService';
+import type { ScanPlan } from '../types';
+import { UapDropService } from '../uapdrop/UapDropService';
 
 // Load environment variables
 dotenv.config();
@@ -25,8 +26,22 @@ const PORT = process.env.API_PORT || 3000;
 console.log('Express app created');
 
 // Middleware
+const allowedOrigins = new Set(
+  (process.env.CORS_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.has(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error(`Origin ${origin} is not allowed by CORS`));
+  },
   credentials: true,
 }));
 app.use(express.json());
@@ -76,6 +91,10 @@ console.log('CronValidator created');
 console.log('Creating LocalAiService...');
 const localAiService = new LocalAiService();
 console.log('LocalAiService created');
+
+console.log('Creating UapDropService...');
+const uapDropService = new UapDropService();
+console.log('UapDropService created');
 
 // Set up extractor with storage service
 contentExtractor.setStorageService(storageService);
@@ -129,8 +148,254 @@ app.get('/api/system/status', asyncHandler(async (_req: Request, res: Response) 
 }));
 
 // ============================================================================
-// REVIEW QUEUE ENDPOINTS
+// PUBLIC CONTENT + REVIEW QUEUE ENDPOINTS
 // ============================================================================
+
+app.get('/api/content', asyncHandler(async (_req: Request, res: Response) => {
+  const content = await storageService.getApprovedContent();
+  res.json(content);
+}));
+
+app.get('/api/people', asyncHandler(async (_req: Request, res: Response) => {
+  const people = await storageService.getPeople();
+  res.json(people);
+}));
+
+app.get('/api/people/:slug', asyncHandler(async (req: Request, res: Response) => {
+  const { slug } = req.params;
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    res.status(400).json({ error: 'Invalid person slug' });
+    return;
+  }
+
+  const person = await storageService.getPersonBySlug(slug);
+  if (!person) {
+    res.status(404).json({ error: 'Person profile not found' });
+    return;
+  }
+
+  res.json(person);
+}));
+
+app.get('/api/cases', asyncHandler(async (_req: Request, res: Response) => {
+  const cases = await storageService.getCases();
+  res.json(cases);
+}));
+
+app.get('/api/cases/:slug', asyncHandler(async (req: Request, res: Response) => {
+  const { slug } = req.params;
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    res.status(400).json({ error: 'Invalid case slug' });
+    return;
+  }
+
+  const caseCollection = await storageService.getCaseBySlug(slug);
+  if (!caseCollection) {
+    res.status(404).json({ error: 'Case not found' });
+    return;
+  }
+
+  res.json(caseCollection);
+}));
+
+app.get('/api/sightings', asyncHandler(async (_req: Request, res: Response) => {
+  const sightings = await uapDropService.getSightings();
+  res.set('Cache-Control', 'public, max-age=600');
+  res.json(sightings);
+}));
+
+app.get('/api/sightings/:sourceKey/:externalId', asyncHandler(async (req: Request, res: Response) => {
+  const { sourceKey, externalId } = req.params;
+  if (!/^[a-z0-9_-]+$/i.test(sourceKey) || externalId.length > 250) {
+    res.status(400).json({ error: 'Invalid UAPDrop sighting identifier' });
+    return;
+  }
+
+  const sighting = await uapDropService.getSighting(sourceKey, externalId);
+  if (!sighting) {
+    res.status(404).json({ error: 'Sighting not found' });
+    return;
+  }
+
+  res.set('Cache-Control', 'public, max-age=600');
+  res.json(sighting);
+}));
+
+function parseAdminCaseInput(body: unknown): AdminCaseInput {
+  if (!body || typeof body !== 'object') {
+    throw new Error('Case details are required');
+  }
+
+  const input = body as Record<string, unknown>;
+  const title = typeof input.title === 'string' ? input.title.trim() : '';
+  const slug = typeof input.slug === 'string' ? input.slug.trim().toLowerCase() : '';
+  const summary = typeof input.summary === 'string' ? input.summary.trim() : '';
+  const caseStatus = typeof input.caseStatus === 'string' ? input.caseStatus.trim() : '';
+
+  if (!title || title.length > 300) throw new Error('Title is required and must be 300 characters or fewer');
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error('Slug must use lowercase letters, numbers and hyphens');
+  if (!summary) throw new Error('Summary is required');
+  if (!caseStatus || caseStatus.length > 80) throw new Error('Case status is required');
+  if (typeof input.isPublished !== 'boolean') throw new Error('Publication status is required');
+  if (!Array.isArray(input.contentIds) || !input.contentIds.every(Number.isInteger)) {
+    throw new Error('contentIds must contain numeric IDs');
+  }
+  if (!Array.isArray(input.personIds) || !input.personIds.every(Number.isInteger)) {
+    throw new Error('personIds must contain numeric IDs');
+  }
+
+  let eventDate: Date | null = null;
+  if (typeof input.eventDate === 'string' && input.eventDate.length > 0) {
+    eventDate = new Date(`${input.eventDate}T00:00:00Z`);
+    if (Number.isNaN(eventDate.getTime())) throw new Error('Event date is invalid');
+  }
+
+  const nullableString = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  };
+
+  return {
+    title,
+    slug,
+    summary,
+    eventDate,
+    location: nullableString(input.location),
+    caseStatus,
+    coverImageUrl: nullableString(input.coverImageUrl),
+    sourceUrl: nullableString(input.sourceUrl),
+    isPublished: input.isPublished,
+    contentIds: input.contentIds as number[],
+    personIds: input.personIds as number[],
+  };
+}
+
+function parseAdminPersonInput(body: unknown): AdminPersonInput {
+  if (!body || typeof body !== 'object') throw new Error('Person details are required');
+  const input = body as Record<string, unknown>;
+  const stringValue = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
+  const nullableString = (value: unknown): string | null => {
+    const normalized = stringValue(value);
+    return normalized || null;
+  };
+  const nullableYear = (value: unknown): number | null => {
+    if (value === null || value === undefined || value === '') return null;
+    const year = Number(value);
+    if (!Number.isInteger(year) || year < 1800 || year > new Date().getFullYear()) {
+      throw new Error('Years must be valid four-digit years');
+    }
+    return year;
+  };
+
+  const fullName = stringValue(input.fullName);
+  const slug = stringValue(input.slug).toLowerCase();
+  const role = stringValue(input.role);
+  const biography = stringValue(input.biography);
+  const sourceTitle = stringValue(input.sourceTitle);
+  const sourceUrl = stringValue(input.sourceUrl);
+  const birthYear = nullableYear(input.birthYear);
+  const deathYear = nullableYear(input.deathYear);
+
+  if (!fullName || fullName.length > 240) throw new Error('Full name is required and must be 240 characters or fewer');
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error('Slug must use lowercase letters, numbers and hyphens');
+  if (!role || role.length > 160) throw new Error('Role is required and must be 160 characters or fewer');
+  if (!biography) throw new Error('Biography is required');
+  if (!sourceTitle || sourceTitle.length > 500) throw new Error('Source title is required');
+  if (!/^https?:\/\//i.test(sourceUrl)) throw new Error('Source URL must be an http or https address');
+  if (birthYear !== null && deathYear !== null && deathYear < birthYear) {
+    throw new Error('Death year cannot be earlier than birth year');
+  }
+  if (!Array.isArray(input.aliases) || !input.aliases.every((value) => typeof value === 'string')) {
+    throw new Error('Aliases must be an array of text values');
+  }
+  if (typeof input.isPublished !== 'boolean') throw new Error('Publication status is required');
+
+  return {
+    fullName,
+    slug,
+    aliases: Array.from(new Set(input.aliases.map((value) => String(value).trim()).filter(Boolean))),
+    role,
+    birthYear,
+    deathYear,
+    photoUrl: nullableString(input.photoUrl),
+    biography,
+    sourceTitle,
+    sourceUrl,
+    sourceNotes: nullableString(input.sourceNotes),
+    aiGenerated: input.aiGenerated === true,
+    isPublished: input.isPublished,
+  };
+}
+
+app.get('/api/admin/cases', asyncHandler(async (_req: Request, res: Response) => {
+  const cases = await storageService.getAdminCases();
+  res.json(cases);
+}));
+
+app.post('/api/admin/cases', asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const input = parseAdminCaseInput(req.body);
+    const caseId = await storageService.saveAdminCase(null, input);
+    res.status(201).json({ caseId });
+  } catch (error) {
+    if (error instanceof Error && (
+      error.message.includes('required') ||
+      error.message.includes('must') ||
+      error.message.includes('invalid')
+    )) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+}));
+
+app.put('/api/admin/cases/:id', asyncHandler(async (req: Request, res: Response) => {
+  const caseId = Number.parseInt(req.params.id, 10);
+  if (!Number.isInteger(caseId) || caseId <= 0) {
+    res.status(400).json({ error: 'Invalid case ID' });
+    return;
+  }
+
+  try {
+    const input = parseAdminCaseInput(req.body);
+    const savedCaseId = await storageService.saveAdminCase(caseId, input);
+    res.json({ caseId: savedCaseId });
+  } catch (error) {
+    if (error instanceof Error && (
+      error.message.includes('required') ||
+      error.message.includes('must') ||
+      error.message.includes('invalid')
+    )) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+}));
+
+app.post('/api/admin/people', asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const input = parseAdminPersonInput(req.body);
+    const personId = await storageService.saveAdminPerson(input);
+    res.status(201).json({ personId, published: input.isPublished });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('already uses the slug')) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
+    if (error instanceof Error && (
+      error.message.includes('required') ||
+      error.message.includes('must') ||
+      error.message.includes('cannot')
+    )) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+}));
 
 /**
  * GET /api/review-queue
@@ -152,6 +417,32 @@ app.get('/api/review-queue', asyncHandler(async (req: Request, res: Response) =>
   
   const content = await storageService.getPendingContent(filters);
   res.json(content);
+}));
+
+app.post('/api/review-queue/:id/person-suggestion', asyncHandler(async (req: Request, res: Response) => {
+  const contentId = Number.parseInt(req.params.id, 10);
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  if (!Number.isInteger(contentId) || contentId <= 0) {
+    res.status(400).json({ error: 'Invalid content ID' });
+    return;
+  }
+  if (!name) {
+    res.status(400).json({ error: 'Detected person name is required' });
+    return;
+  }
+
+  const item = await storageService.getPendingContentById(contentId);
+  if (!item) {
+    res.status(404).json({ error: 'Pending source was not found' });
+    return;
+  }
+  if (!(item.people ?? []).some((person) => person.toLowerCase() === name.toLowerCase())) {
+    res.status(400).json({ error: 'That person was not detected in this source' });
+    return;
+  }
+
+  const suggestion = await localAiService.suggestPersonProfile(name, item);
+  res.json(suggestion);
 }));
 
 /**
@@ -251,7 +542,7 @@ app.patch('/api/keywords/:id/toggle', asyncHandler(async (req: Request, res: Res
   } else {
     await storageService.deactivateKeyword(keywordId);
   }
-  
+
   res.json({ success: true, message: `Keyword ${isActive ? 'activated' : 'deactivated'} successfully` });
 }));
 
@@ -447,35 +738,33 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
     : [];
 
   let promptKeywords: string[] = [];
-  let customQueries: string[] = [];
-  let aiAssistWasRequested = aiAssistEnabled !== false && typeof promptText === 'string' && promptText.trim().length > 0;
-  let aiAssistWasApplied = false;
+  let scanPlan: ScanPlan | undefined = undefined;
+  const aiAssistWasRequested = false;
+  const aiAssistWasApplied = false;
   if (typeof promptText === 'string' && promptText.trim().length > 0) {
-    const parsedPrompt = parseScanPrompt(promptText);
-    if ('error' in parsedPrompt) {
-      res.status(parsedPrompt.statusCode).json({ error: parsedPrompt.error });
-      return;
-    }
-
-    promptKeywords = parsedPrompt.keywords;
-
-    const aiPlan =
-      aiAssistEnabled === false
-        ? null
-        : await localAiService.buildQueryPlan(promptText, promptKeywords);
-    if (aiPlan) {
-      promptKeywords = aiPlan.keywords.length > 0 ? aiPlan.keywords : promptKeywords;
-      customQueries = aiPlan.queries;
-      aiAssistWasApplied = aiPlan.queries.length > 0;
-    }
+    const literalQuery = promptText.trim();
+    promptKeywords = [literalQuery];
+    scanPlan = {
+      normalizedPrompt: literalQuery,
+      intentType: 'statement',
+      topicPhrases: [literalQuery],
+      contextHints: [],
+      sourceTypeHints: [],
+      queryPlans: [{ query: literalQuery, layer: 'exact-topic' }],
+      keywords: [literalQuery],
+    };
   }
-  
-  // Get active keywords
-  const keywords = promptKeywords.length > 0
-    ? promptKeywords
-    : normalizedKeywords.length > 0
-      ? normalizedKeywords
-      : await contentScanner.getActiveKeywords();
+
+  const keywords = Array.from(
+    new Set(
+      (promptKeywords.length > 0
+        ? promptKeywords
+        : normalizedKeywords.length > 0
+          ? normalizedKeywords
+          : await contentScanner.getActiveKeywords()
+      ).map((keyword) => keyword.trim()).filter((keyword) => keyword.length > 0),
+    ),
+  );
   
   // Execute scan
   activeManualScan = { stopRequested: false };
@@ -487,12 +776,15 @@ app.post('/api/scan/trigger', asyncHandler(async (req: Request, res: Response) =
       savedSearchId,
       undefined,
       {
-        ...(promptKeywords.length > 0
+        ...(scanPlan
           ? {
               fallbackStrategy: 'none' as const,
-              customQueries,
+              scanPlan,
+              backgroundKeywords: [],
             }
-          : {}),
+          : {
+              backgroundKeywords: normalizedKeywords,
+            }),
         isCancelled: () => activeManualScan?.stopRequested === true,
       },
     );

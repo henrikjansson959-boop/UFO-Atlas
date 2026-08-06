@@ -8,6 +8,16 @@ import type {
   ErrorLog,
   ScanResult,
   SystemStatus,
+  ApprovedContentItem,
+  PersonProfile,
+  PersonProfileSummary,
+  CaseDetail,
+  CaseSummary,
+  AdminCaseInput,
+  AdminCasesWorkspace,
+  AdminPersonInput,
+  PersonSuggestion,
+  PublicSighting,
 } from '../types';
 
 type SearchHistoryApiEntry = {
@@ -22,8 +32,31 @@ type SearchHistoryApiEntry = {
   execution_type: 'manual' | 'scheduled';
 };
 
-// API base URL - will be configured based on environment
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+type ErrorLogApiEntry = {
+  log_id: number;
+  timestamp: string;
+  component: string;
+  message: string;
+  stack_trace: string | null;
+};
+
+// Keep local browser and API hostnames aligned so browser privacy/CORS rules do
+// not treat localhost and 127.0.0.1 as different sites during development.
+function getApiBaseUrl(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+
+  try {
+    const url = new URL(configured);
+    if (window.location.hostname === '127.0.0.1' && url.hostname === 'localhost') {
+      url.hostname = '127.0.0.1';
+    }
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return configured;
+  }
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 function normalizeTimestamp(value: string): string {
   return /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`;
@@ -84,6 +117,73 @@ export const reviewQueueAPI = {
       method: 'POST',
       body: JSON.stringify({ tagIds }),
     });
+  },
+
+  suggestPerson: (contentId: number, name: string): Promise<PersonSuggestion> => {
+    return apiCall<PersonSuggestion>(`/review-queue/${contentId}/person-suggestion`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  },
+};
+
+export const contentAPI = {
+  getApprovedContent: (): Promise<ApprovedContentItem[]> => {
+    return apiCall<ApprovedContentItem[]>('/content');
+  },
+};
+
+export const peopleAPI = {
+  getPeople: (): Promise<PersonProfileSummary[]> => {
+    return apiCall<PersonProfileSummary[]>('/people');
+  },
+
+  getPerson: (slug: string): Promise<PersonProfile> => {
+    return apiCall<PersonProfile>(`/people/${encodeURIComponent(slug)}`);
+  },
+
+  createAdminPerson: (input: AdminPersonInput): Promise<{ personId: number; published: boolean }> => {
+    return apiCall<{ personId: number; published: boolean }>('/admin/people', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+};
+
+export const casesAPI = {
+  getCases: (): Promise<CaseSummary[]> => {
+    return apiCall<CaseSummary[]>('/cases');
+  },
+
+  getCase: (slug: string): Promise<CaseDetail> => {
+    return apiCall<CaseDetail>(`/cases/${encodeURIComponent(slug)}`);
+  },
+
+  getAdminCases: (): Promise<AdminCasesWorkspace> => {
+    return apiCall<AdminCasesWorkspace>('/admin/cases');
+  },
+
+  createAdminCase: (input: AdminCaseInput): Promise<{ caseId: number }> => {
+    return apiCall<{ caseId: number }>('/admin/cases', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  updateAdminCase: (
+    caseId: number,
+    input: AdminCaseInput,
+  ): Promise<{ caseId: number }> => {
+    return apiCall<{ caseId: number }>(`/admin/cases/${caseId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
+  },
+};
+
+export const sightingsAPI = {
+  getSightings: (): Promise<PublicSighting[]> => {
+    return apiCall<PublicSighting[]>('/sightings');
   },
 };
 
@@ -210,9 +310,19 @@ export const savedSearchAPI = {
 
 // Error Logs and Search History API
 export const logsAPI = {
-  getErrorLogs: (limit?: number): Promise<ErrorLog[]> => {
+  getErrorLogs: async (limit?: number): Promise<ErrorLog[]> => {
     const query = limit ? `?limit=${limit}` : '';
-    return apiCall<ErrorLog[]>(`/error-logs${query}`);
+    const entries = await apiCall<Array<ErrorLog | ErrorLogApiEntry>>(`/error-logs${query}`);
+    return entries.map((entry) => {
+      if ('logId' in entry) return entry;
+      return {
+        logId: entry.log_id,
+        timestamp: normalizeTimestamp(entry.timestamp),
+        component: entry.component,
+        message: entry.message,
+        stackTrace: entry.stack_trace ?? '',
+      };
+    });
   },
 
   getSearchHistory: async (limit?: number): Promise<SearchHistoryEntry[]> => {

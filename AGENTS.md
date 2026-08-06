@@ -1,5 +1,15 @@
 # AGENTS.md
 
+## Start Here
+- Read `PROJECT_HANDOFF.md` before changing or starting this project.
+- On Windows, the normal one-click startup is `Start UFO Atlas.cmd` (which runs `Start-UFOAtlas.ps1`).
+- The normal shutdown is `Stop UFO Atlas.cmd` (which runs `Stop-UFOAtlas.ps1`).
+- UFO Atlas uses LM Studio with `google/gemma-4-e4b`; it does not require Docker.
+- Expected local services:
+  - LM Studio OpenAI-compatible API: `http://127.0.0.1:1234/v1`
+  - UFO Atlas API: `http://127.0.0.1:3005/api`
+  - Website: `http://127.0.0.1:5173`
+
 ## Frontend Source Of Truth
 - The canonical frontend root is `website/src/main.tsx` -> `website/src/App.tsx`.
 - Do not introduce or switch to a second top-level app shell for production work.

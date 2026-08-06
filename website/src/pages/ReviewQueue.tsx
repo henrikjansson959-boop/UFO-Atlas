@@ -1,6 +1,8 @@
-import { ChevronLeft, ChevronRight, Filter, RefreshCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, Radar, RefreshCcw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import ContentItemCard from '../components/ContentItemCard';
+import PersonSuggestionModal from '../components/PersonSuggestionModal';
 import TagAssignmentModal from '../components/TagAssignmentModal';
 import { reviewQueueAPI, tagAPI } from '../services/api';
 import type { ContentItem, ContentType, TagGroup } from '../types';
@@ -10,6 +12,7 @@ const ITEMS_PER_PAGE = 10;
 const loadingRows = Array.from({ length: 3 }, (_, index) => index);
 
 const ReviewQueue = () => {
+  const navigate = useNavigate();
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
   const [tagGroups, setTagGroups] = useState<TagGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,6 +23,8 @@ const ReviewQueue = () => {
   const [showTagModal, setShowTagModal] = useState(false);
   const [busyItemId, setBusyItemId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showFilters, setShowFilters] = useState(false);
+  const [personReview, setPersonReview] = useState<{ item: ContentItem; name: string } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -136,7 +141,6 @@ const ReviewQueue = () => {
     () => visibleItems.filter((item) => item.isPotentialDuplicate).length,
     [visibleItems],
   );
-
   if (loading) {
     return (
       <div className="queue-loading-state" aria-live="polite" aria-busy="true">
@@ -199,40 +203,75 @@ const ReviewQueue = () => {
       <div className="ui-filter-bar review-queue-filter-bar">
         <div className="review-toolbar">
           <div className="compact-summary">
-            <h3>Filter</h3>
-            <p>Content type lane</p>
+            <h3>Queue</h3>
+            <p>{contentItems.length} items ready for review</p>
           </div>
           <div className="ui-actions">
             <span className="ui-badge muted">
               <Filter size={14} />
-              {contentItems.length} items visible
+              {contentItems.length} in queue
             </span>
+            <button
+              type="button"
+              onClick={() => setShowFilters((value) => !value)}
+              className={`ui-button-secondary ${showFilters ? 'is-active' : ''}`}
+              aria-expanded={showFilters}
+              aria-controls="queue-filter-controls"
+            >
+              <Filter size={15} />
+              Filter
+            </button>
             <button type="button" onClick={loadData} className="ui-button-secondary">
               <RefreshCcw size={15} />
               Refresh
             </button>
           </div>
         </div>
-        <div className="ui-pill-row">
-          {contentTypes.map((type) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => setSelectedContentType(type)}
-              className={`ghost-button small ${selectedContentType === type ? 'is-active' : ''}`}
-            >
-              {type}
-            </button>
-          ))}
-        </div>
+        {showFilters ? (
+          <div id="queue-filter-controls" className="ui-pill-row">
+            {contentTypes.map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setSelectedContentType(type)}
+                className={`ghost-button small ${selectedContentType === type ? 'is-active' : ''}`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {contentItems.length === 0 ? (
         <section className="review-queue-empty">
-          <div className="review-queue-empty-copy">
-            <span className="queue-loading-kicker">Queue clear</span>
-            <h2>No pending items{selectedContentType !== 'all' ? ` for "${selectedContentType}"` : ''}.</h2>
-            <p>The review queue is empty right now. Run a scan or switch the filter to check other content types.</p>
+          <div className="review-queue-empty-panel">
+            <div className="review-queue-empty-orbit" aria-hidden="true">
+              <div className="review-queue-empty-core" />
+            </div>
+            <div className="review-queue-empty-copy">
+              <span className="queue-loading-kicker">Queue clear</span>
+              <h2>No pending items{selectedContentType !== 'all' ? ` for "${selectedContentType}"` : ''}.</h2>
+              <p>
+                Nothing is waiting for review right now. Run a fresh scan to pull in new material,
+                then refresh this queue to review new items.
+              </p>
+            </div>
+            <div className="review-queue-empty-meta">
+              <span className="ui-pill">Queue 0</span>
+              <span className="ui-pill">Filter {selectedContentType}</span>
+              <span className="ui-pill">Status ready</span>
+            </div>
+            <div className="review-queue-empty-actions">
+              <button type="button" className="ui-button" onClick={() => navigate('/admin/scan')}>
+                <Radar size={15} />
+                Run scan
+              </button>
+              <button type="button" className="ui-button-secondary" onClick={loadData}>
+                <RefreshCcw size={15} />
+                Refresh queue
+              </button>
+            </div>
           </div>
         </section>
       ) : (
@@ -244,23 +283,18 @@ const ReviewQueue = () => {
               onApprove={handleApprove}
               onReject={handleReject}
               onAssignTags={handleAssignTags}
+              onReviewPerson={(item, name) => setPersonReview({ item, name })}
               busy={busyItemId === item.contentId}
             />
           ))}
 
           <div className="ui-filter-bar review-queue-footer">
-            <div className="review-toolbar">
-              <div className="compact-summary">
-                <h3>Page</h3>
-                <p>
-                  Showing {startIndex + 1}-{endIndex} of {contentItems.length}
-                </p>
-              </div>
+            <div className="review-toolbar review-queue-footer-toolbar">
               <span className="ui-badge muted">
                 Page {currentPage} of {totalPages}
               </span>
             </div>
-            <div className="ui-actions">
+            <div className="ui-actions review-queue-footer-actions">
               <button
                 type="button"
                 className="ghost-button small"
@@ -295,6 +329,18 @@ const ReviewQueue = () => {
           onAssign={handleTagsAssigned}
         />
       )}
+
+      {personReview ? (
+        <PersonSuggestionModal
+          item={personReview.item}
+          detectedName={personReview.name}
+          onClose={() => setPersonReview(null)}
+          onSaved={(message) => {
+            setPersonReview(null);
+            setNotice(message);
+          }}
+        />
+      ) : null}
     </div>
   );
 };

@@ -1,12 +1,11 @@
 import { Clock3, RefreshCcw } from 'lucide-react';
 import { Fragment, useEffect, useState } from 'react';
-import { logsAPI, savedSearchAPI } from '../services/api';
-import type { SavedSearch, SearchHistoryEntry } from '../types';
+import { logsAPI } from '../services/api';
+import type { SearchHistoryEntry } from '../types';
 import { getActiveScan, getRecentScanByJobId, type ActiveScanState } from '../utils/recentScanStore';
 
 const SearchHistory = () => {
   const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
-  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
@@ -30,12 +29,8 @@ const SearchHistory = () => {
     try {
       setLoading(true);
       setError(null);
-      const [historyData, savedSearchData] = await Promise.all([
-        logsAPI.getSearchHistory(100),
-        savedSearchAPI.getSavedSearches(),
-      ]);
+      const historyData = await logsAPI.getSearchHistory(100);
       setHistory(historyData);
-      setSavedSearches(savedSearchData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load search history');
     } finally {
@@ -49,14 +44,6 @@ const SearchHistory = () => {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-  };
-
-  const getSavedSearchName = (savedSearchId: number | null, version: number | null) => {
-    if (!savedSearchId) return null;
-    const search = savedSearches.find(
-      (item) => item.savedSearchId === savedSearchId && item.version === version,
-    );
-    return search ? `${search.searchName} (v${search.version})` : `Saved Search #${savedSearchId} (v${version})`;
   };
 
   const renderExecutionTypeBadge = (executionType: 'manual' | 'scheduled') => (
@@ -80,7 +67,7 @@ const SearchHistory = () => {
         <div className="page-heading">
           <span className="hero-badge">Runs</span>
           <h1>Run history</h1>
-          <p>Review what each scan did, how long it ran, and what it found.</p>
+          <p>Review what each scan did, how long it ran, what it found, and what actually made it into queue.</p>
         </div>
         <button type="button" onClick={loadData} className="ui-button-secondary">
           <RefreshCcw size={15} />
@@ -138,9 +125,8 @@ const SearchHistory = () => {
                   <th>Type</th>
                   <th>Job</th>
                   <th>Topics</th>
-                  <th>Found</th>
+                  <th>Queued</th>
                   <th>Duration</th>
-                  <th>Saved Search</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -161,15 +147,8 @@ const SearchHistory = () => {
                             ? `${entry.keywordsUsed.length} topic${entry.keywordsUsed.length > 1 ? 's' : ''}`
                             : 'None'}
                         </td>
-                        <td>
-                          <span className="ui-badge success">{entry.itemsDiscovered}</span>
-                        </td>
+                        <td><span className="ui-badge success">{entry.itemsDiscovered}</span></td>
                         <td>{recentScan ? formatDuration(recentScan.durationMs) : '-'}</td>
-                        <td>
-                          {entry.savedSearchId
-                            ? getSavedSearchName(entry.savedSearchId, entry.savedSearchVersion)
-                            : '-'}
-                        </td>
                         <td>
                           <button
                             type="button"
@@ -192,7 +171,7 @@ const SearchHistory = () => {
                       </tr>
                       {expandedRows.has(entry.searchId) && (
                         <tr>
-                          <td colSpan={8}>
+                          <td colSpan={7}>
                             <div className="ui-note" style={{ margin: '12px' }}>
                               <div>
                                 <h4 className="ui-table-title">Full job ID</h4>
@@ -200,6 +179,19 @@ const SearchHistory = () => {
                               </div>
                               {recentScan && (
                                 <>
+                                  <div>
+                                    <h4 className="ui-table-title">Outcome</h4>
+                                    <div className="ui-pill-row" style={{ marginTop: '8px' }}>
+                                      <span className="ui-pill">URLs found {recentScan.discoveredUrls.length}</span>
+                                      <span className="ui-pill">Queued {entry.itemsDiscovered}</span>
+                                      <span className="ui-pill">Skipped duplicates {recentScan.duplicateSkippedCount ?? 0}</span>
+                                      <span className="ui-pill">Skipped unsafe {recentScan.unsafeSkippedCount ?? 0}</span>
+                                      <span className="ui-pill">Skipped off-topic {recentScan.offTopicSkippedCount ?? 0}</span>
+                                      <span className="ui-pill">
+                                        Not queued {Math.max(0, recentScan.discoveredUrls.length - entry.itemsDiscovered)}
+                                      </span>
+                                    </div>
+                                  </div>
                                   <div>
                                     <h4 className="ui-table-title">Mode</h4>
                                     <div className="ui-pill-row" style={{ marginTop: '8px' }}>
@@ -267,7 +259,7 @@ const SearchHistory = () => {
       </div>
 
       {history.length > 0 ? (
-        <p className="ui-table-footnote">Showing {history.length} search history entries.</p>
+        <p className="ui-table-footnote">Queued counts are new review items, not total URLs found.</p>
       ) : null}
     </div>
   );

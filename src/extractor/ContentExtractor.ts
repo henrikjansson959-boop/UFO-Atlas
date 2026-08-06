@@ -1,7 +1,7 @@
 import puppeteer, { Browser } from 'puppeteer';
 import * as cheerio from 'cheerio';
 import axios from 'axios';
-import { ExtractedContent, DataValidator, DuplicateDetector, StorageService } from '../types';
+import { ExtractStoreResult, ExtractedContent, DataValidator, DuplicateDetector, SourceMaterialType, StorageService } from '../types';
 
 const KNOWN_UFO_PEOPLE = [
   'David Grusch',
@@ -49,6 +49,14 @@ const PERSON_BLOCKLIST_FRAGMENTS = [
   'documentary',
   'uap',
   'ufo',
+  '.com',
+  '.net',
+  '.org',
+  'episode',
+  'power of',
+  'part ',
+  'chapter',
+  'season',
 ];
 
 const ORGANIZATION_HINTS = [
@@ -72,7 +80,70 @@ const ORGANIZATION_HINTS = [
   'ministry',
   'studio',
   'channel',
+  'university',
+  'institute',
+  'corp',
+  'corporation',
+  'inc',
+  'llc',
+  'ltd',
+  'media',
 ];
+
+const ORGANIZATION_BLOCKLIST_FRAGMENTS = [
+  '.com',
+  '.net',
+  '.org',
+  'march ',
+  'april ',
+  'may ',
+  'june ',
+  'july ',
+  'august ',
+  'september ',
+  'october ',
+  'november ',
+  'december ',
+  'january ',
+  'february ',
+  'alien conspiracies',
+  'power of',
+  'ghost rocket',
+];
+
+const COMMON_TITLE_WORDS = new Set([
+  'the',
+  'a',
+  'an',
+  'and',
+  'of',
+  'for',
+  'to',
+  'in',
+  'on',
+  'with',
+  'from',
+  'after',
+  'over',
+  'under',
+  'why',
+  'how',
+  'what',
+  'when',
+  'where',
+  'first',
+  'latest',
+  'report',
+  'reports',
+  'story',
+  'stories',
+  'article',
+  'video',
+  'documentary',
+  'episode',
+  'part',
+  'chapter',
+]);
 
 const PERSON_CONTEXT_HINTS = [
   'said',
@@ -197,11 +268,16 @@ export class ContentExtractor {
    * - Requirement 10.1: Validate content before storage
    */
   async extractAndStore(url: string): Promise<number | null> {
+    const result = await this.extractAndStoreDetailed(url);
+    return result.contentId;
+  }
+
+  async extractAndStoreDetailed(url: string): Promise<ExtractStoreResult> {
     const cachedContent = this.extractionCache.get(url);
     const content = cachedContent ?? await this.extract(url);
     if (!content) {
       this.logError('extractAndStore', url, new Error('Extraction failed'));
-      return null;
+      return { status: 'extraction_failed', contentId: null, content: null };
     }
 
     // Validate content
@@ -212,7 +288,12 @@ export class ContentExtractor {
     const validationResult = this.validator.validate(content);
     if (!validationResult.isValid) {
       this.logValidationError(url, validationResult.errors);
-      return null;
+      return {
+        status: validationResult.errors.some((error) => error.toLowerCase().includes('safety')) ? 'unsafe' : 'invalid',
+        contentId: null,
+        content,
+        validationErrors: validationResult.errors,
+      };
     }
 
     // Check for duplicates
@@ -225,7 +306,7 @@ export class ContentExtractor {
     // Skip exact duplicates
     if (duplicateCheck.isDuplicate) {
       this.logDuplicate(url, duplicateCheck.matchedContentId);
-      return null;
+      return { status: 'duplicate', contentId: null, content };
     }
 
     // Store content (flag potential duplicates)
@@ -244,11 +325,11 @@ export class ContentExtractor {
         this.logPotentialDuplicate(url, contentId, duplicateCheck.similarityScore);
       }
       
-      return contentId;
+      return { status: 'stored', contentId, content };
     } catch (error) {
       this.extractionCache.delete(url);
       this.logError('extractAndStore', url, error);
-      return null;
+      return { status: 'storage_failed', contentId: null, content };
     }
   }
 
@@ -360,12 +441,21 @@ export class ContentExtractor {
     const description = this.extractDescription($, extractedText);
     const eventDate = this.extractDate($);
     const contentType = this.classifyContentType($, title, description, extractedText);
+    const sourceType = this.classifySourceType(sourceUrl, title, description);
     const organizations = this.extractOrganizations(title, description, extractedText);
     const people = this.extractPeople(title, description, extractedText, organizations);
     const caseTopics = this.extractCaseTopics(title, description, extractedText, people, organizations);
     const imageUrls = this.extractImageUrls($, sourceUrl, title, description, people, organizations, caseTopics);
     const relatedTopics = [...caseTopics, ...organizations];
     const followUpQueries = this.buildFollowUpQueries(title, contentType, people, organizations, caseTopics);
+    const evidenceExcerpt = this.buildEvidenceExcerpt(title, description, extractedText, caseTopics);
+    const { label: relevanceLabel, reason: relevanceReason } = this.buildRelevanceAssessment(
+      sourceType,
+      contentType,
+      people,
+      organizations,
+      caseTopics,
+    );
 
     return {
       title,
@@ -375,6 +465,10 @@ export class ContentExtractor {
       contentType,
       rawHtml,
       extractedText,
+      sourceType,
+      evidenceExcerpt,
+      relevanceLabel,
+      relevanceReason,
       people,
       organizations,
       caseTopics,
@@ -589,12 +683,59 @@ export class ContentExtractor {
     return scores[0].score > 0 ? scores[0].type : 'news';
   }
 
+  private classifySourceType(sourceUrl: string, title: string, description: string): SourceMaterialType {
+    const combined = `${sourceUrl} ${title} ${description}`.toLowerCase();
+
+    if (/(podcast|spotify\.com\/episode|podcasts?\.apple|audio episode)/.test(combined)) {
+      return 'podcast';
+    }
+
+    if (/(isbn|ebook|e-book|books\.google|book review|published book)/.test(combined)) {
+      return 'book';
+    }
+
+    if (/(witness report|eyewitness|witness testimony|sighting report|first-hand account)/.test(combined)) {
+      return 'witness_report';
+    }
+
+    if (/(case file|casefile|case report|investigation file|dossier)/.test(combined)) {
+      return 'case_file';
+    }
+
+    if (/(news report|newspaper|news article|press report|breaking news)/.test(combined)) {
+      return 'news_report';
+    }
+
+    if (/\.pdf(\?|$)/.test(sourceUrl.toLowerCase()) || /(pdf|document|report|files|records)/.test(combined)) {
+      return /(archive|declassified|records|history\.|archives?)/.test(combined) ? 'archive' : 'document';
+    }
+
+    if (/(reddit|forum|thread|discussion|board)/.test(combined)) {
+      return 'forum';
+    }
+
+    if (/(youtube|vimeo|video|interview|watch)/.test(combined)) {
+      return 'video';
+    }
+
+    if (/(image|photo|gallery|jpg|jpeg|png)/.test(combined)) {
+      return 'image';
+    }
+
+    if (/(archive|history|declassified|records)/.test(combined)) {
+      return 'archive';
+    }
+
+    return 'article';
+  }
+
   /**
    * Count how many keywords appear in the text
    */
   private countKeywordMatches(text: string, keywords: string[]): number {
     return keywords.filter(keyword => text.includes(keyword)).length;
   }
+
 
   private extractPeople(title: string, description: string, extractedText: string, organizations: string[]): string[] {
     const text = `${title}. ${description}. ${extractedText}`.replace(/\s+/g, ' ');
@@ -631,7 +772,7 @@ export class ContentExtractor {
 
     return Array.from(new Set(candidates))
       .filter((candidate) => candidate.length >= 6 && candidate.length <= 40)
-      .slice(0, 8);
+      .filter((candidate) => this.isValidPersonCandidate(candidate, text, organizations));
   }
 
   private extractOrganizations(title: string, description: string, extractedText: string): string[] {
@@ -647,7 +788,7 @@ export class ContentExtractor {
         return false;
       }
 
-      return this.looksLikeOrganization(candidate);
+      return this.looksLikeOrganization(candidate) && this.isValidOrganizationCandidate(candidate);
     });
 
     return Array.from(new Set(organizations)).slice(0, 8);
@@ -782,7 +923,7 @@ export class ContentExtractor {
       }
     }
 
-    if (this.looksLikeCaseTopic(cleanedTitle)) {
+    if (this.looksLikeStrongCaseTopic(cleanedTitle)) {
       topics.push(cleanedTitle);
     }
 
@@ -799,6 +940,7 @@ export class ContentExtractor {
     }
 
     return Array.from(new Set(topics))
+      .filter((topic) => this.isValidCaseTopicCandidate(topic))
       .filter((topic) => topic.length >= 3 && !people.some((person) => person.toLowerCase() === topic.toLowerCase()))
       .slice(0, 6);
   }
@@ -813,12 +955,14 @@ export class ContentExtractor {
     const queries: string[] = [];
     const cleanedTitle = this.cleanTopicLabel(title);
 
-    if (cleanedTitle.length >= 8 && this.looksLikeCaseTopic(cleanedTitle)) {
+    if (cleanedTitle.length >= 8 && this.looksLikeCaseTopic(cleanedTitle) && !this.looksLikeMediaTopic(cleanedTitle)) {
       queries.push(this.toUfoFollowUpQuery(cleanedTitle, contentType));
     }
 
     for (const topic of caseTopics) {
-      queries.push(this.toUfoFollowUpQuery(topic, contentType));
+      if (!this.looksLikeMediaTopic(topic)) {
+        queries.push(this.toUfoFollowUpQuery(topic, contentType));
+      }
     }
 
     for (const person of people) {
@@ -863,6 +1007,65 @@ export class ContentExtractor {
     return /^[A-Z]{2,}$/.test(value) || ORGANIZATION_HINTS.some((hint) => normalized.includes(hint));
   }
 
+  private isValidPersonCandidate(candidate: string, text: string, organizations: string[]): boolean {
+    const normalized = candidate.toLowerCase();
+    const parts = candidate.split(/\s+/).filter(Boolean);
+    const isKnownPerson = KNOWN_UFO_PEOPLE.some((person) => person.toLowerCase() === normalized);
+
+    if (parts.length < 2 || parts.length > 3) {
+      return false;
+    }
+
+    if (!parts.every((part) => /^[A-Z][a-z'-]+$/.test(part))) {
+      return false;
+    }
+
+    if (this.looksLikeDomain(candidate)) {
+      return false;
+    }
+
+    if (organizations.some((organization) => organization.toLowerCase() === normalized)) {
+      return false;
+    }
+
+    if (PERSON_BLOCKLIST_FRAGMENTS.some((fragment) => normalized.includes(fragment))) {
+      return false;
+    }
+
+    if (parts.some((part) => COMMON_TITLE_WORDS.has(part.toLowerCase()))) {
+      return false;
+    }
+
+    return isKnownPerson || this.hasPersonContext(text, candidate);
+  }
+
+  private isValidOrganizationCandidate(candidate: string): boolean {
+    const normalized = candidate.toLowerCase();
+    const parts = candidate.split(/\s+/).filter(Boolean);
+
+    if (this.looksLikeDomain(candidate)) {
+      return false;
+    }
+
+    if (parts.length > 5) {
+      return false;
+    }
+
+    if (ORGANIZATION_BLOCKLIST_FRAGMENTS.some((fragment) => normalized.includes(fragment))) {
+      return false;
+    }
+
+    if (
+      parts.length >= 3 &&
+      parts.every((part) => /^[A-Z][a-z'-]+$/.test(part)) &&
+      !ORGANIZATION_HINTS.some((hint) => normalized.includes(hint))
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
   private hasPersonContext(text: string, candidate: string): boolean {
     const normalizedText = text.toLowerCase();
     const normalizedCandidate = candidate.toLowerCase();
@@ -894,6 +1097,49 @@ export class ContentExtractor {
     );
   }
 
+  private looksLikeStrongCaseTopic(value: string): boolean {
+    const normalized = value.toLowerCase();
+    if (!this.looksLikeCaseTopic(value)) {
+      return false;
+    }
+
+    return (
+      CASE_TOPICS.some((topic) => normalized.includes(topic.toLowerCase())) ||
+      /(incident|encounter|retrieval|disclosure|project blue book|aatip|aawsap|majestic 12)/.test(normalized)
+    );
+  }
+
+  private isValidCaseTopicCandidate(value: string): boolean {
+    const normalized = value.toLowerCase();
+    const parts = value.split(/\s+/).filter(Boolean);
+
+    if (this.looksLikeDomain(value)) {
+      return false;
+    }
+
+    if (this.looksLikeMediaTopic(value)) {
+      return false;
+    }
+
+    if (parts.length > 6) {
+      return false;
+    }
+
+    if (ORGANIZATION_BLOCKLIST_FRAGMENTS.some((fragment) => normalized.includes(fragment))) {
+      return false;
+    }
+
+    if (
+      parts.length >= 4 &&
+      parts.every((part) => /^[A-Z][a-z'-]+$/.test(part)) &&
+      !this.looksLikeStrongCaseTopic(value)
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
   private extractQuotedTopics(text: string): string[] {
     return Array.from(
       text.matchAll(/["“”']([^"“”']{5,90})["“”']/g),
@@ -912,6 +1158,86 @@ export class ContentExtractor {
     } catch {
       return null;
     }
+  }
+
+  private looksLikeDomain(value: string): boolean {
+    return /\b[a-z0-9-]+\.(com|net|org|co|io|gov|edu)\b/i.test(value);
+  }
+
+  private looksLikeMediaTopic(value: string): boolean {
+    return /(documentary|episode|season|stream|watch|trailer|top 10|best )/i.test(value);
+  }
+
+  private buildEvidenceExcerpt(
+    title: string,
+    description: string,
+    extractedText: string,
+    caseTopics: string[],
+  ): string {
+    const candidates = [description, ...this.splitSentences(extractedText)];
+
+    for (const topic of caseTopics) {
+      const match = candidates.find((candidate) => candidate.toLowerCase().includes(topic.toLowerCase()));
+      if (match) {
+        return this.limitExcerpt(match);
+      }
+    }
+
+    const strongest = candidates.find((candidate) => candidate.length >= 80) ?? extractedText ?? description ?? title;
+    return this.limitExcerpt(strongest);
+  }
+
+  private buildRelevanceAssessment(
+    sourceType: SourceMaterialType,
+    contentType: 'event' | 'person' | 'theory' | 'news',
+    people: string[],
+    organizations: string[],
+    caseTopics: string[],
+  ): { label: string; reason: string } {
+    if (sourceType === 'document' || sourceType === 'archive') {
+      return {
+        label: sourceType === 'archive' ? 'Archival evidence' : 'Documentary evidence',
+        reason: 'Useful for source material, records, and direct document review.',
+      };
+    }
+
+    if (caseTopics.length > 0) {
+      return {
+        label: 'Topic-specific evidence',
+        reason: `Grounded in ${caseTopics.slice(0, 2).join(', ')}.`,
+      };
+    }
+
+    if (contentType === 'theory') {
+      return {
+        label: 'Theory context',
+        reason: 'Useful for background explanations and investigative framing.',
+      };
+    }
+
+    if (people.length > 0 || organizations.length > 0) {
+      return {
+        label: 'Named-source lead',
+        reason: 'Contains named people, organizations, or programs worth review.',
+      };
+    }
+
+    return {
+      label: sourceType === 'forum' ? 'Discussion lead' : 'Background source',
+      reason: 'Relevant background material for queue review.',
+    };
+  }
+
+  private splitSentences(value: string): string[] {
+    return value
+      .split(/(?<=[.!?])\s+/)
+      .map((sentence) => sentence.replace(/\s+/g, ' ').trim())
+      .filter((sentence) => sentence.length >= 40);
+  }
+
+  private limitExcerpt(value: string): string {
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    return normalized.length > 320 ? `${normalized.slice(0, 317)}...` : normalized;
   }
 
   /**

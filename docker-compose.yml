@@ -69,8 +69,8 @@ services:
       - SEARCH_PROVIDER=searxng
       - SEARXNG_URL=http://searxng:8080
       - LOCAL_AI_ENABLED=true
-      - LOCAL_AI_URL=http://ollama:11434
-      - LOCAL_AI_MODEL=qwen3:4b
+      - LOCAL_AI_URL=http://host.docker.internal:1234/v1
+      - LOCAL_AI_MODEL=google/gemma-4-e4b
     volumes:
       - .:/app
       - api_node_modules:/app/node_modules
@@ -78,7 +78,8 @@ services:
     depends_on:
       - postgrest
       - searxng
-      - ollama
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - ufo-atlas
 
@@ -114,16 +115,6 @@ services:
     networks:
       - ufo-atlas
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ufo-atlas-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - ufo-atlas
-
 volumes:
   postgres_data:
     driver: local
@@ -131,9 +122,6 @@ volumes:
     driver: local
   frontend_node_modules:
     driver: local
-  ollama_data:
-    driver: local
-
 networks:
   ufo-atlas:
     driver: bridge

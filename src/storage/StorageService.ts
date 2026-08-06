@@ -2,11 +2,23 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   ExtractedContent,
   ContentItem,
+  ApprovedContentItem,
+  PersonCase,
+  PersonProfile,
+  PersonProfileSummary,
+  PersonSource,
+  CaseDetail,
+  CaseSummary,
+  AdminCaseInput,
+  AdminCaseRecord,
+  AdminCasesWorkspace,
+  AdminPersonInput,
   Keyword,
   Tag,
   SavedSearch,
   ContentFilters,
   ScheduledSearchConfig,
+  SourceMaterialType,
   StorageService as IStorageService,
 } from '../types';
 
@@ -20,7 +32,7 @@ export class StorageService implements IStorageService {
   private readonly baseDelay = 1000; // 1 second
   private readonly maxRawHtmlLength = 40000;
   private readonly maxExtractedTextLength = 4000;
-  private readonly maxArrayItems = 8;
+  private reviewQueueSupportsEnrichment: boolean | null = null;
 
   constructor(supabaseUrl: string, supabaseKey: string) {
     this.client = createClient(supabaseUrl, supabaseKey, {
@@ -71,29 +83,63 @@ export class StorageService implements IStorageService {
   ): Promise<number> {
     return this.withRetry(async () => {
       const sanitizedContent = this.sanitizeExtractedContent(content);
-      const { data, error } = await this.client
-        .from('review_queue')
-        .insert({
-          title: sanitizedContent.title,
-          description: sanitizedContent.description,
-          event_date: sanitizedContent.eventDate,
-          source_url: sanitizedContent.sourceUrl,
-          content_type: sanitizedContent.contentType,
-          raw_html: sanitizedContent.rawHtml,
-          extracted_text: sanitizedContent.extractedText ?? null,
-          people: sanitizedContent.people ?? [],
-          organizations: sanitizedContent.organizations ?? [],
-          case_topics: sanitizedContent.caseTopics ?? [],
-          image_urls: sanitizedContent.imageUrls ?? [],
-          related_topics: sanitizedContent.relatedTopics ?? [],
-          follow_up_queries: sanitizedContent.followUpQueries ?? [],
-          status: 'pending',
-          is_potential_duplicate: isPotentialDuplicate,
-        })
-        .select('content_id')
-        .single();
+      const baseInsert = {
+        title: sanitizedContent.title,
+        description: sanitizedContent.description,
+        event_date: sanitizedContent.eventDate,
+        source_url: sanitizedContent.sourceUrl,
+        content_type: sanitizedContent.contentType,
+        raw_html: sanitizedContent.rawHtml,
+        status: 'pending',
+        is_potential_duplicate: isPotentialDuplicate,
+      };
+      const enrichedInsert = {
+        ...baseInsert,
+        extracted_text: sanitizedContent.extractedText ?? null,
+        source_type: sanitizedContent.sourceType ?? null,
+        evidence_excerpt: sanitizedContent.evidenceExcerpt ?? null,
+        relevance_label: sanitizedContent.relevanceLabel ?? null,
+        relevance_reason: sanitizedContent.relevanceReason ?? null,
+        people: sanitizedContent.people ?? [],
+        organizations: sanitizedContent.organizations ?? [],
+        case_topics: sanitizedContent.caseTopics ?? [],
+        image_urls: sanitizedContent.imageUrls ?? [],
+        related_topics: sanitizedContent.relatedTopics ?? [],
+        follow_up_queries: sanitizedContent.followUpQueries ?? [],
+      };
+
+      let data: { content_id: number } | null = null;
+      let error: any = null;
+
+      if (this.reviewQueueSupportsEnrichment === false) {
+        ({ data, error } = await this.client
+          .from('review_queue')
+          .insert(baseInsert)
+          .select('content_id')
+          .single());
+      } else {
+        ({ data, error } = await this.client
+          .from('review_queue')
+          .insert(enrichedInsert)
+          .select('content_id')
+          .single());
+
+        if (error && this.isMissingReviewQueueEnrichmentError(error)) {
+          this.reviewQueueSupportsEnrichment = false;
+          ({ data, error } = await this.client
+            .from('review_queue')
+            .insert(baseInsert)
+            .select('content_id')
+            .single());
+        } else if (!error) {
+          this.reviewQueueSupportsEnrichment = true;
+        }
+      }
 
       if (error) throw error;
+      if (!data) {
+        throw new Error('Review queue insert returned no content_id');
+      }
       return data.content_id;
     }, 'insertReviewQueue');
   }
@@ -122,7 +168,7 @@ export class StorageService implements IStorageService {
           .filter((value) => value.length > 0)
           .map((value) => this.truncateText(value, 300)),
       ),
-    ).slice(0, this.maxArrayItems);
+    );
   }
 
   private truncateOptionalText(value: string | undefined, maxLength: number): string | undefined {
@@ -233,35 +279,63 @@ export class StorageService implements IStorageService {
    */
   async getPendingContent(filters?: ContentFilters): Promise<ContentItem[]> {
     return this.withRetry(async () => {
-      let query = this.client
-        .from('review_queue')
-        .select(`
-          content_id,
-          title,
-          description,
-          event_date,
-          source_url,
-          content_type,
-          raw_html,
-          extracted_text,
-          people,
-          organizations,
-          case_topics,
-          image_urls,
-          related_topics,
-          follow_up_queries,
-          discovered_at,
-          status,
-          is_potential_duplicate
-        `)
-        .eq('status', 'pending')
-        .order('discovered_at', { ascending: false });
+      const baseColumns = `
+        content_id,
+        title,
+        description,
+        event_date,
+        source_url,
+        content_type,
+        raw_html,
+        discovered_at,
+        status,
+        is_potential_duplicate
+      `;
+      const enrichedColumns = `
+        ${baseColumns},
+        extracted_text,
+        source_type,
+        evidence_excerpt,
+        relevance_label,
+        relevance_reason,
+        people,
+        organizations,
+        case_topics,
+        image_urls,
+        related_topics,
+        follow_up_queries
+      `;
 
-      if (filters?.contentType) {
-        query = query.eq('content_type', filters.contentType);
+      const buildQuery = (selectClause: string) => {
+        let query = this.client
+          .from('review_queue')
+          .select(selectClause)
+          .eq('status', 'pending')
+          .order('discovered_at', { ascending: false });
+
+        if (filters?.contentType) {
+          query = query.eq('content_type', filters.contentType);
+        }
+
+        return query;
+      };
+
+      let content: any[] | null = null;
+      let error: any = null;
+
+      if (this.reviewQueueSupportsEnrichment === false) {
+        ({ data: content, error } = await buildQuery(baseColumns));
+      } else {
+        ({ data: content, error } = await buildQuery(enrichedColumns));
+
+        if (error && this.isMissingReviewQueueEnrichmentError(error)) {
+          this.reviewQueueSupportsEnrichment = false;
+          ({ data: content, error } = await buildQuery(baseColumns));
+        } else if (!error) {
+          this.reviewQueueSupportsEnrichment = true;
+        }
       }
 
-      const { data: content, error } = await query;
       if (error) throw error;
 
       // Fetch tags for each content item
@@ -286,6 +360,10 @@ export class StorageService implements IStorageService {
           contentType: item.content_type,
           rawHtml: item.raw_html,
           extractedText: item.extracted_text ?? '',
+          sourceType: this.deriveSourceType(item.source_type, item.source_url, item.title, item.description),
+          evidenceExcerpt: item.evidence_excerpt ?? this.deriveEvidenceExcerpt(item.extracted_text, item.description),
+          relevanceLabel: item.relevance_label ?? this.deriveRelevanceLabel(item.content_type, item.source_type ?? null),
+          relevanceReason: item.relevance_reason ?? this.deriveRelevanceReason(item.extracted_text, item.people, item.organizations, item.case_topics),
           people: Array.isArray(item.people) ? item.people : [],
           organizations: Array.isArray(item.organizations) ? item.organizations : [],
           caseTopics: Array.isArray(item.case_topics) ? item.case_topics : [],
@@ -301,6 +379,11 @@ export class StorageService implements IStorageService {
 
       return contentItems;
     }, 'getPendingContent');
+  }
+
+  async getPendingContentById(contentId: number): Promise<ContentItem | null> {
+    const items = await this.getPendingContent();
+    return items.find((item) => item.contentId === contentId) ?? null;
   }
 
   /**
@@ -358,6 +441,675 @@ export class StorageService implements IStorageService {
 
       return data.keyword_id;
     }, 'addKeyword');
+  }
+
+  /**
+   * Get approved content for the public content library.
+   * The archive currently stores the core approved fields, so source material
+   * type is derived from those fields when the enriched queue record is moved.
+   */
+  async getApprovedContent(): Promise<ApprovedContentItem[]> {
+    return this.withRetry(async () => {
+      const { data, error } = await this.client
+        .from('timeline_archive')
+        .select(`
+          content_id,
+          title,
+          description,
+          event_date,
+          source_url,
+          content_type,
+          approved_at
+        `)
+        .order('approved_at', { ascending: false });
+
+      if (error) throw error;
+
+      const contentItems: ApprovedContentItem[] = [];
+      for (const item of data || []) {
+        const tags = await this.getContentTags(item.content_id, 'Timeline_Archive');
+        contentItems.push({
+          contentId: item.content_id,
+          title: item.title,
+          description: item.description ?? '',
+          eventDate: item.event_date ? new Date(item.event_date) : null,
+          sourceUrl: item.source_url,
+          contentType: item.content_type,
+          sourceType: this.deriveSourceType(null, item.source_url, item.title, item.description ?? ''),
+          approvedAt: new Date(item.approved_at),
+          tags,
+        });
+      }
+
+      return contentItems;
+    }, 'getApprovedContent');
+  }
+
+  async getPeople(): Promise<PersonProfileSummary[]> {
+    return this.withRetry(async () => {
+      const { data, error } = await this.client
+        .from('people_profiles')
+        .select(`
+          person_id,
+          slug,
+          full_name,
+          aliases,
+          role,
+          birth_year,
+          death_year,
+          photo_url,
+          biography,
+          person_content_links(content_id),
+          person_case_links(case_id),
+          person_sources(source_id)
+        `)
+        .eq('is_published', true)
+        .order('full_name', { ascending: true });
+
+      if (error) {
+        if (this.isMissingPeopleSchemaError(error)) return [];
+        throw error;
+      }
+
+      return (data || []).map((row: any) => this.mapPersonSummary(row));
+    }, 'getPeople');
+  }
+
+  async getPersonBySlug(slug: string): Promise<PersonProfile | null> {
+    return this.withRetry(async () => {
+      const { data: profile, error: profileError } = await this.client
+        .from('people_profiles')
+        .select(`
+          person_id,
+          slug,
+          full_name,
+          aliases,
+          role,
+          birth_year,
+          death_year,
+          photo_url,
+          biography
+        `)
+        .eq('slug', slug)
+        .eq('is_published', true)
+        .maybeSingle();
+
+      if (profileError) {
+        if (this.isMissingPeopleSchemaError(profileError)) return null;
+        throw profileError;
+      }
+      if (!profile) return null;
+
+      const [contentLinksResult, caseLinksResult, sourcesResult] = await Promise.all([
+        this.client
+          .from('person_content_links')
+          .select('content_id')
+          .eq('person_id', profile.person_id),
+        this.client
+          .from('person_case_links')
+          .select(`
+            ufo_cases!inner(
+              case_id,
+              slug,
+              title,
+              summary,
+              event_date,
+              location,
+              source_url,
+              is_published
+            )
+          `)
+          .eq('person_id', profile.person_id)
+          .eq('ufo_cases.is_published', true),
+        this.client
+          .from('person_sources')
+          .select('source_id, title, publisher, published_at, source_url, notes')
+          .eq('person_id', profile.person_id)
+          .order('published_at', { ascending: false, nullsFirst: false }),
+      ]);
+
+      if (contentLinksResult.error) throw contentLinksResult.error;
+      if (caseLinksResult.error) throw caseLinksResult.error;
+      if (sourcesResult.error) throw sourcesResult.error;
+
+      const contentIds = (contentLinksResult.data || []).map((link: any) => link.content_id);
+      const relatedContent = await this.getApprovedContentByIds(contentIds);
+      const relatedCases = (caseLinksResult.data || [])
+        .map((link: any) => link.ufo_cases)
+        .filter(Boolean)
+        .map((item: any): PersonCase => ({
+          caseId: item.case_id,
+          slug: item.slug,
+          title: item.title,
+          summary: item.summary ?? '',
+          eventDate: item.event_date ? new Date(item.event_date) : null,
+          location: item.location ?? null,
+          sourceUrl: item.source_url ?? null,
+        }));
+      const sources = (sourcesResult.data || []).map((item: any): PersonSource => ({
+        sourceId: item.source_id,
+        title: item.title,
+        publisher: item.publisher ?? null,
+        publishedAt: item.published_at ? new Date(item.published_at) : null,
+        sourceUrl: item.source_url,
+        notes: item.notes ?? null,
+      }));
+
+      return {
+        ...this.mapPersonSummary({
+          ...profile,
+          person_content_links: contentLinksResult.data || [],
+          person_case_links: caseLinksResult.data || [],
+          person_sources: sourcesResult.data || [],
+        }),
+        relatedContent,
+        relatedCases,
+        sources,
+      };
+    }, 'getPersonBySlug');
+  }
+
+  async getCases(): Promise<CaseSummary[]> {
+    return this.withRetry(async () => {
+      const { data, error } = await this.client
+        .from('ufo_cases')
+        .select(`
+          case_id,
+          slug,
+          title,
+          summary,
+          event_date,
+          location,
+          case_status,
+          cover_image_url,
+          source_url,
+          case_content_links(content_id),
+          person_case_links(person_id)
+        `)
+        .eq('is_published', true)
+        .order('event_date', { ascending: false, nullsFirst: false });
+
+      if (error) {
+        if (this.isMissingCaseSchemaError(error)) return [];
+        throw error;
+      }
+
+      const cases: CaseSummary[] = [];
+      for (const row of data || []) {
+        const contentIds = Array.isArray(row.case_content_links)
+          ? row.case_content_links.map((link: any) => link.content_id)
+          : [];
+        const materials = await this.getApprovedContentByIds(contentIds);
+        cases.push(this.mapCaseSummary(row, materials));
+      }
+      return cases;
+    }, 'getCases');
+  }
+
+  async getCaseBySlug(slug: string): Promise<CaseDetail | null> {
+    return this.withRetry(async () => {
+      const { data: caseRow, error: caseError } = await this.client
+        .from('ufo_cases')
+        .select(`
+          case_id,
+          slug,
+          title,
+          summary,
+          event_date,
+          location,
+          case_status,
+          cover_image_url,
+          source_url
+        `)
+        .eq('slug', slug)
+        .eq('is_published', true)
+        .maybeSingle();
+
+      if (caseError) {
+        if (this.isMissingCaseSchemaError(caseError)) return null;
+        throw caseError;
+      }
+      if (!caseRow) return null;
+
+      const [contentLinksResult, peopleLinksResult] = await Promise.all([
+        this.client
+          .from('case_content_links')
+          .select('content_id')
+          .eq('case_id', caseRow.case_id),
+        this.client
+          .from('person_case_links')
+          .select(`
+            people_profiles!inner(
+              person_id,
+              slug,
+              full_name,
+              aliases,
+              role,
+              birth_year,
+              death_year,
+              photo_url,
+              biography,
+              is_published,
+              person_content_links(content_id),
+              person_case_links(case_id),
+              person_sources(source_id)
+            )
+          `)
+          .eq('case_id', caseRow.case_id)
+          .eq('people_profiles.is_published', true),
+      ]);
+
+      if (contentLinksResult.error) throw contentLinksResult.error;
+      if (peopleLinksResult.error) throw peopleLinksResult.error;
+
+      const contentIds = (contentLinksResult.data || []).map((link: any) => link.content_id);
+      const materials = await this.getApprovedContentByIds(contentIds);
+      const relatedPeople = (peopleLinksResult.data || [])
+        .map((link: any) => link.people_profiles)
+        .filter(Boolean)
+        .map((person: any) => this.mapPersonSummary(person));
+
+      return {
+        ...this.mapCaseSummary(
+          {
+            ...caseRow,
+            person_case_links: peopleLinksResult.data || [],
+          },
+          materials,
+        ),
+        relatedPeople,
+        materials,
+      };
+    }, 'getCaseBySlug');
+  }
+
+  async getAdminCases(): Promise<AdminCasesWorkspace> {
+    return this.withRetry(async () => {
+      const { data, error } = await this.client
+        .from('ufo_cases')
+        .select(`
+          case_id,
+          slug,
+          title,
+          summary,
+          event_date,
+          location,
+          case_status,
+          cover_image_url,
+          source_url,
+          is_published,
+          case_content_links(content_id),
+          person_case_links(person_id)
+        `)
+        .order('updated_at', { ascending: false });
+
+      if (error) {
+        if (this.isMissingCaseSchemaError(error)) {
+          return { cases: [], schemaReady: false };
+        }
+        throw error;
+      }
+
+      const cases: AdminCaseRecord[] = [];
+      for (const row of data || []) {
+        const contentIds = Array.isArray(row.case_content_links)
+          ? row.case_content_links.map((link: any) => Number(link.content_id))
+          : [];
+        const personIds = Array.isArray(row.person_case_links)
+          ? row.person_case_links.map((link: any) => Number(link.person_id))
+          : [];
+        const materials = await this.getApprovedContentByIds(contentIds);
+
+        cases.push({
+          ...this.mapCaseSummary(row, materials),
+          isPublished: row.is_published === true,
+          contentIds,
+          personIds,
+        });
+      }
+
+      return { cases, schemaReady: true };
+    }, 'getAdminCases');
+  }
+
+  async saveAdminCase(caseId: number | null, input: AdminCaseInput): Promise<number> {
+    return this.withRetry(async () => {
+      const casePayload = {
+        slug: input.slug,
+        title: input.title,
+        summary: input.summary,
+        event_date: input.eventDate ? input.eventDate.toISOString().slice(0, 10) : null,
+        location: input.location,
+        case_status: input.caseStatus,
+        cover_image_url: input.coverImageUrl,
+        source_url: input.sourceUrl,
+        is_published: input.isPublished,
+        updated_at: new Date().toISOString(),
+      };
+
+      const caseResult = caseId === null
+        ? await this.client
+            .from('ufo_cases')
+            .insert(casePayload)
+            .select('case_id')
+            .single()
+        : await this.client
+            .from('ufo_cases')
+            .update(casePayload)
+            .eq('case_id', caseId)
+            .select('case_id')
+            .single();
+
+      if (caseResult.error) throw caseResult.error;
+      const savedCaseId = Number(caseResult.data.case_id);
+
+      const [deleteContentLinks, deletePersonLinks] = await Promise.all([
+        this.client.from('case_content_links').delete().eq('case_id', savedCaseId),
+        this.client.from('person_case_links').delete().eq('case_id', savedCaseId),
+      ]);
+      if (deleteContentLinks.error) throw deleteContentLinks.error;
+      if (deletePersonLinks.error) throw deletePersonLinks.error;
+
+      const contentIds = Array.from(new Set(input.contentIds));
+      const personIds = Array.from(new Set(input.personIds));
+      if (contentIds.length > 0) {
+        const { error } = await this.client.from('case_content_links').insert(
+          contentIds.map((contentId) => ({
+            case_id: savedCaseId,
+            content_id: contentId,
+          })),
+        );
+        if (error) throw error;
+      }
+      if (personIds.length > 0) {
+        const { error } = await this.client.from('person_case_links').insert(
+          personIds.map((personId) => ({
+            case_id: savedCaseId,
+            person_id: personId,
+          })),
+        );
+        if (error) throw error;
+      }
+
+      return savedCaseId;
+    }, 'saveAdminCase');
+  }
+
+  async saveAdminPerson(input: AdminPersonInput): Promise<number> {
+    return this.withRetry(async () => {
+      const { data: profile, error: profileError } = await this.client
+        .from('people_profiles')
+        .insert({
+          slug: input.slug,
+          full_name: input.fullName,
+          aliases: input.aliases,
+          role: input.role,
+          birth_year: input.birthYear,
+          death_year: input.deathYear,
+          photo_url: input.photoUrl,
+          biography: input.biography,
+          is_published: input.isPublished,
+          updated_at: new Date().toISOString(),
+        })
+        .select('person_id')
+        .single();
+
+      if (profileError) {
+        if (profileError.code === '23505') {
+          throw new Error(`A person profile already uses the slug "${input.slug}"`);
+        }
+        throw profileError;
+      }
+
+      const personId = Number(profile.person_id);
+      const { error: sourceError } = await this.client
+        .from('person_sources')
+        .insert({
+          person_id: personId,
+          title: input.sourceTitle,
+          source_url: input.sourceUrl,
+          notes: input.sourceNotes,
+        });
+
+      if (sourceError) {
+        await this.client.from('people_profiles').delete().eq('person_id', personId);
+        throw sourceError;
+      }
+
+      return personId;
+    }, 'saveAdminPerson');
+  }
+
+  private mapPersonSummary(row: any): PersonProfileSummary {
+    return {
+      personId: row.person_id,
+      slug: row.slug,
+      fullName: row.full_name,
+      aliases: Array.isArray(row.aliases) ? row.aliases : [],
+      role: row.role,
+      birthYear: row.birth_year ?? null,
+      deathYear: row.death_year ?? null,
+      photoUrl: row.photo_url ?? null,
+      biography: row.biography,
+      relatedContentCount: Array.isArray(row.person_content_links)
+        ? row.person_content_links.length
+        : 0,
+      relatedCaseCount: Array.isArray(row.person_case_links)
+        ? row.person_case_links.length
+        : 0,
+      sourceCount: Array.isArray(row.person_sources) ? row.person_sources.length : 0,
+    };
+  }
+
+  private mapCaseSummary(row: any, materials: ApprovedContentItem[]): CaseSummary {
+    const materialBreakdown: Partial<Record<SourceMaterialType, number>> = {};
+    for (const material of materials) {
+      materialBreakdown[material.sourceType] =
+        (materialBreakdown[material.sourceType] ?? 0) + 1;
+    }
+
+    return {
+      caseId: row.case_id,
+      slug: row.slug,
+      title: row.title,
+      summary: row.summary ?? '',
+      eventDate: row.event_date ? new Date(row.event_date) : null,
+      location: row.location ?? null,
+      caseStatus: row.case_status ?? 'Documented',
+      coverImageUrl: row.cover_image_url ?? null,
+      sourceUrl: row.source_url ?? null,
+      relatedPeopleCount: Array.isArray(row.person_case_links)
+        ? row.person_case_links.length
+        : 0,
+      materialCount: materials.length,
+      materialBreakdown,
+    };
+  }
+
+  private async getApprovedContentByIds(contentIds: number[]): Promise<ApprovedContentItem[]> {
+    if (contentIds.length === 0) return [];
+
+    const { data, error } = await this.client
+      .from('timeline_archive')
+      .select(`
+        content_id,
+        title,
+        description,
+        event_date,
+        source_url,
+        content_type,
+        approved_at
+      `)
+      .in('content_id', contentIds)
+      .order('approved_at', { ascending: false });
+
+    if (error) throw error;
+
+    const items: ApprovedContentItem[] = [];
+    for (const item of data || []) {
+      items.push({
+        contentId: item.content_id,
+        title: item.title,
+        description: item.description ?? '',
+        eventDate: item.event_date ? new Date(item.event_date) : null,
+        sourceUrl: item.source_url,
+        contentType: item.content_type,
+        sourceType: this.deriveSourceType(
+          null,
+          item.source_url,
+          item.title,
+          item.description ?? '',
+        ),
+        approvedAt: new Date(item.approved_at),
+        tags: await this.getContentTags(item.content_id, 'Timeline_Archive'),
+      });
+    }
+
+    return items;
+  }
+
+  private isMissingReviewQueueEnrichmentError(error: unknown): boolean {
+    const message =
+      typeof error === 'object' && error !== null && 'message' in error
+        ? String((error as { message?: unknown }).message).toLowerCase()
+        : String(error).toLowerCase();
+
+    return (
+        message.includes('review_queue') &&
+        message.includes('does not exist') &&
+        (
+          message.includes('extracted_text') ||
+          message.includes('source_type') ||
+          message.includes('evidence_excerpt') ||
+          message.includes('relevance_label') ||
+          message.includes('relevance_reason') ||
+          message.includes('people') ||
+          message.includes('organizations') ||
+          message.includes('case_topics') ||
+        message.includes('image_urls') ||
+        message.includes('related_topics') ||
+        message.includes('follow_up_queries')
+      )
+    );
+  }
+
+  private isMissingPeopleSchemaError(error: unknown): boolean {
+    const message =
+      typeof error === 'object' && error !== null && 'message' in error
+        ? String((error as { message?: unknown }).message).toLowerCase()
+        : String(error).toLowerCase();
+
+    return (
+      message.includes('people_profiles') &&
+      (message.includes('does not exist') || message.includes('schema cache'))
+    );
+  }
+
+  private isMissingCaseSchemaError(error: unknown): boolean {
+    const message =
+      typeof error === 'object' && error !== null && 'message' in error
+        ? String((error as { message?: unknown }).message).toLowerCase()
+        : String(error).toLowerCase();
+
+    return (
+      (message.includes('ufo_cases') || message.includes('case_content_links')) &&
+      (message.includes('does not exist') || message.includes('schema cache'))
+    );
+  }
+
+  private deriveSourceType(
+    storedValue: unknown,
+    sourceUrl: string,
+    title: string,
+    description: string,
+  ): SourceMaterialType {
+    if (
+      typeof storedValue === 'string' &&
+      [
+        'article',
+        'forum',
+        'document',
+        'video',
+        'image',
+        'archive',
+        'book',
+        'podcast',
+        'witness_report',
+        'news_report',
+        'case_file',
+      ].includes(storedValue)
+    ) {
+      return storedValue as SourceMaterialType;
+    }
+
+    const combined = `${sourceUrl} ${title} ${description}`.toLowerCase();
+    if (/(podcast|spotify\.com\/episode|podcasts?\.apple|audio episode)/.test(combined)) {
+      return 'podcast';
+    }
+    if (/(isbn|ebook|e-book|books\.google|book review|published book)/.test(combined)) {
+      return 'book';
+    }
+    if (/(witness report|eyewitness|witness testimony|sighting report|first-hand account)/.test(combined)) {
+      return 'witness_report';
+    }
+    if (/(case file|casefile|case report|investigation file|dossier)/.test(combined)) {
+      return 'case_file';
+    }
+    if (/(news report|newspaper|news article|press report|breaking news)/.test(combined)) {
+      return 'news_report';
+    }
+    if (/\.pdf(\?|$)/.test(sourceUrl.toLowerCase()) || /(pdf|document|report|records|declassified)/.test(combined)) {
+      return /(archive|history|records|declassified)/.test(combined) ? 'archive' : 'document';
+    }
+    if (/(reddit|forum|thread|discussion)/.test(combined)) {
+      return 'forum';
+    }
+    if (/(youtube|vimeo|video|interview|watch)/.test(combined)) {
+      return 'video';
+    }
+    if (/(image|photo|gallery|jpg|jpeg|png)/.test(combined)) {
+      return 'image';
+    }
+    return 'article';
+  }
+
+  private deriveEvidenceExcerpt(extractedText: unknown, description: string): string {
+    const baseText = typeof extractedText === 'string' && extractedText.trim().length > 0 ? extractedText : description;
+    const normalized = baseText.replace(/\s+/g, ' ').trim();
+    return normalized.length > 320 ? `${normalized.slice(0, 317)}...` : normalized;
+  }
+
+  private deriveRelevanceLabel(contentType: string, sourceType: string | null): string {
+    if (sourceType === 'archive') return 'Archival evidence';
+    if (sourceType === 'document') return 'Documentary evidence';
+    if (contentType === 'theory') return 'Theory context';
+    if (sourceType === 'forum') return 'Discussion lead';
+    return 'Background source';
+  }
+
+  private deriveRelevanceReason(
+    extractedText: unknown,
+    people: unknown,
+    organizations: unknown,
+    caseTopics: unknown,
+  ): string {
+    const topicCount = Array.isArray(caseTopics) ? caseTopics.length : 0;
+    const peopleCount = Array.isArray(people) ? people.length : 0;
+    const orgCount = Array.isArray(organizations) ? organizations.length : 0;
+
+    if (topicCount > 0) {
+      return 'Contains named topics or cases worth direct review.';
+    }
+
+    if (peopleCount > 0 || orgCount > 0) {
+      return 'Contains named people, organizations, or programs that can guide follow-up.';
+    }
+
+    if (typeof extractedText === 'string' && extractedText.trim().length > 0) {
+      return 'Includes extracted text that can be reviewed without opening the source first.';
+    }
+
+    return 'Useful background material collected for review.';
   }
 
   /**

@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, Database, History, Moon, Radar, Search, ShieldCheck, Sun, Tags } from 'lucide-react';
+import { ArrowRight, BookOpen, Database, History, Moon, Radar, ShieldCheck, Sun, Tags } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../components/ThemeContext';
 
@@ -14,12 +14,6 @@ const quickLinks = [
     text: 'Approve, reject, and assign tags before records move deeper into the dataset.',
     to: '/admin/review-queue',
     icon: ShieldCheck,
-  },
-  {
-    title: 'Saved Searches',
-    text: 'Store repeatable search recipes, version them, and rerun them against the current data source.',
-    to: '/admin/saved-searches',
-    icon: Search,
   },
 ];
 
@@ -45,8 +39,12 @@ const LandingPage = () => {
           </div>
         </Link>
         <div className="header-actions">
-          <Link to="/admin/review-queue" className="ghost-button small">
+          <Link to="/content" className="ghost-button small">
             <BookOpen size={15} />
+            Content
+          </Link>
+          <Link to="/admin/review-queue" className="ghost-button small">
+            <ShieldCheck size={15} />
             Admin Console
           </Link>
           <button type="button" className="icon-button" onClick={toggleTheme} aria-label="Toggle theme">
@@ -129,9 +127,7 @@ const LandingPage = () => {
               <p className="eyebrow compact">Execution path</p>
               <h2>Admin routes that hit the backend</h2>
             </div>
-            <Link to="/admin/saved-searches" className="results-chip">
-              Search recipes available
-            </Link>
+            <span className="results-chip">Live routes</span>
           </div>
 
           <div className="entry-list landing-feature-list">
@@ -170,7 +166,6 @@ const LandingPage = () => {
           <div className="tag-list">
             <span className="case-tag">/admin/scan</span>
             <span className="case-tag">/admin/review-queue</span>
-            <span className="case-tag">/admin/saved-searches</span>
             <span className="case-tag">/admin/history</span>
             <span className="case-tag">/admin/logs</span>
           </div>

@@ -175,6 +175,32 @@ describe('ContentExtractor', () => {
       expect(result?.people).not.toEqual(expect.arrayContaining(['Amazon Prime']));
     });
 
+    it('should produce evidence metadata for queue review', async () => {
+      const mockHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Ghost rockets over Sweden in 1946</title>
+            <meta name="description" content="An archival summary of ghost rocket sightings across Sweden in 1946.">
+          </head>
+          <body>
+            <article>
+              <p>Witnesses across Sweden reported ghost rockets in the summer of 1946, prompting military review and public speculation.</p>
+            </article>
+          </body>
+        </html>
+      `;
+
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+
+      const result = await extractor.extract('https://archives.example.com/ghost-rockets-1946.pdf');
+
+      expect(result?.sourceType).toBe('archive');
+      expect(result?.evidenceExcerpt).toContain('Witnesses across Sweden reported ghost rockets');
+      expect(result?.relevanceLabel).toBeTruthy();
+      expect(result?.relevanceReason).toBeTruthy();
+    });
+
     it('should extract follow-up queries from detected cases and people', async () => {
       const mockHtml = `
         <!DOCTYPE html>
@@ -201,6 +227,88 @@ describe('ContentExtractor', () => {
           '"Luis Elizondo" UFO UAP',
           'AATIP UFO UAP',
         ]),
+      );
+    });
+
+    it('should avoid turning documentary titles into follow-up queries', async () => {
+      const mockHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>The Ghost Rockets Documentary - A Story of Friendship and UFOs</title>
+            <meta name="description" content="A documentary page about UFO stories.">
+          </head>
+          <body>
+            <article>
+              <p>The documentary mentions ghost rockets and UFO folklore.</p>
+            </article>
+          </body>
+        </html>
+      `;
+
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+
+      const result = await extractor.extract('https://example.com/ghost-rockets-documentary');
+
+      expect(result?.followUpQueries ?? []).not.toEqual(
+        expect.arrayContaining(['The Ghost Rockets Documentary']),
+      );
+    });
+
+    it('should avoid treating domains and generic title phrases as people or organizations', async () => {
+      const mockHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Alien Conspiracies | theblueprint.com</title>
+            <meta
+              name="description"
+              content="There are plenty of strange things in this world that we do not understand yet."
+            >
+          </head>
+          <body>
+            <article>
+              <p>The article on theblueprint.com discusses alien conspiracies and broad claims about sightings.</p>
+              <p>No specific named witness, program, or government office is identified in the story.</p>
+            </article>
+          </body>
+        </html>
+      `;
+
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+
+      const result = await extractor.extract('https://theblueprint.com/alien-conspiracies');
+
+      expect(result?.people ?? []).toEqual([]);
+      expect(result?.organizations ?? []).toEqual([]);
+      expect(result?.caseTopics ?? []).toEqual([]);
+    });
+
+    it('should avoid turning long descriptive titles into case topics', async () => {
+      const mockHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>How UFO Rocket Sightings Over Scandinavia After WWII Misled Missile Ships?</title>
+            <meta
+              name="description"
+              content="A retrospective article about Scandinavian ghost rocket reports and post-war confusion."
+            >
+          </head>
+          <body>
+            <article>
+              <p>The article discusses ghost rocket reports after World War II and the public response in Scandinavia.</p>
+            </article>
+          </body>
+        </html>
+      `;
+
+      mockedAxios.get.mockResolvedValue({ data: mockHtml });
+
+      const result = await extractor.extract('https://example.com/scandinavia-retrospective');
+
+      expect(result?.caseTopics).not.toEqual(
+        expect.arrayContaining(['How UFO Rocket Sightings Over Scandinavia After WWII Misled Missile Ships?']),
       );
     });
 

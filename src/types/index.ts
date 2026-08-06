@@ -8,6 +8,10 @@ export interface ExtractedContent {
   contentType: 'event' | 'person' | 'theory' | 'news';
   rawHtml: string;
   extractedText?: string;
+  sourceType?: SourceMaterialType;
+  evidenceExcerpt?: string;
+  relevanceLabel?: string;
+  relevanceReason?: string;
   people?: string[];
   organizations?: string[];
   caseTopics?: string[];
@@ -28,6 +32,10 @@ export interface ContentItem {
   status: string;
   isPotentialDuplicate: boolean;
   extractedText?: string;
+  sourceType?: SourceMaterialType;
+  evidenceExcerpt?: string;
+  relevanceLabel?: string;
+  relevanceReason?: string;
   people?: string[];
   organizations?: string[];
   caseTopics?: string[];
@@ -35,6 +43,122 @@ export interface ContentItem {
   relatedTopics?: string[];
   followUpQueries?: string[];
   tags: Tag[];
+}
+
+export interface ApprovedContentItem {
+  contentId: number;
+  title: string;
+  description: string;
+  eventDate: Date | null;
+  sourceUrl: string;
+  contentType: 'event' | 'person' | 'theory' | 'news';
+  sourceType: SourceMaterialType;
+  approvedAt: Date;
+  tags: Tag[];
+}
+
+export interface PersonProfileSummary {
+  personId: number;
+  slug: string;
+  fullName: string;
+  aliases: string[];
+  role: string;
+  birthYear: number | null;
+  deathYear: number | null;
+  photoUrl: string | null;
+  biography: string;
+  relatedContentCount: number;
+  relatedCaseCount: number;
+  sourceCount: number;
+}
+
+export interface PersonCase {
+  caseId: number;
+  slug: string;
+  title: string;
+  summary: string;
+  eventDate: Date | null;
+  location: string | null;
+  sourceUrl: string | null;
+}
+
+export interface PersonSource {
+  sourceId: number;
+  title: string;
+  publisher: string | null;
+  publishedAt: Date | null;
+  sourceUrl: string;
+  notes: string | null;
+}
+
+export interface PersonProfile extends PersonProfileSummary {
+  relatedContent: ApprovedContentItem[];
+  relatedCases: PersonCase[];
+  sources: PersonSource[];
+}
+
+export interface CaseSummary {
+  caseId: number;
+  slug: string;
+  title: string;
+  summary: string;
+  eventDate: Date | null;
+  location: string | null;
+  caseStatus: string;
+  coverImageUrl: string | null;
+  sourceUrl: string | null;
+  relatedPeopleCount: number;
+  materialCount: number;
+  materialBreakdown: Partial<Record<SourceMaterialType, number>>;
+}
+
+export interface CaseDetail extends CaseSummary {
+  relatedPeople: PersonProfileSummary[];
+  materials: ApprovedContentItem[];
+}
+
+export interface AdminCaseRecord extends CaseSummary {
+  isPublished: boolean;
+  contentIds: number[];
+  personIds: number[];
+}
+
+export interface AdminCasesWorkspace {
+  cases: AdminCaseRecord[];
+  schemaReady: boolean;
+}
+
+export interface AdminCaseInput {
+  title: string;
+  slug: string;
+  summary: string;
+  eventDate: Date | null;
+  location: string | null;
+  caseStatus: string;
+  coverImageUrl: string | null;
+  sourceUrl: string | null;
+  isPublished: boolean;
+  contentIds: number[];
+  personIds: number[];
+}
+
+export interface PersonSuggestion {
+  fullName: string;
+  slug: string;
+  aliases: string[];
+  role: string;
+  birthYear: number | null;
+  deathYear: number | null;
+  photoUrl: string | null;
+  biography: string;
+  sourceTitle: string;
+  sourceUrl: string;
+  sourceNotes: string | null;
+  aiGenerated: boolean;
+}
+
+export interface AdminPersonInput extends PersonSuggestion {
+  isPublished: boolean;
 }
 
 export interface Keyword {
@@ -97,12 +221,57 @@ export interface ScanResult {
   queriesUsed: string[];
   aiAssistRequested: boolean;
   aiAssistApplied: boolean;
+  duplicateSkippedCount: number;
+  unsafeSkippedCount: number;
+  offTopicSkippedCount: number;
+  candidatesCheckedCount: number;
+  resultLimitApplied: boolean;
 }
 
 export interface ScanExecutionOptions {
   fallbackStrategy?: 'per-keyword' | 'none';
   customQueries?: string[];
   isCancelled?: () => boolean;
+  scanPlan?: ScanPlan;
+  backgroundKeywords?: string[];
+}
+
+export type ScanIntentType = 'question' | 'statement' | 'fragments';
+
+export type SourceMaterialType =
+  | 'article'
+  | 'forum'
+  | 'document'
+  | 'video'
+  | 'image'
+  | 'archive'
+  | 'book'
+  | 'podcast'
+  | 'witness_report'
+  | 'news_report'
+  | 'case_file';
+
+export interface PlannedQuery {
+  query: string;
+  layer: 'exact-topic' | 'context-expansion';
+  sourceTypeHint?: SourceMaterialType;
+}
+
+export interface ScanPlan {
+  normalizedPrompt: string;
+  intentType: ScanIntentType;
+  topicPhrases: string[];
+  contextHints: string[];
+  sourceTypeHints: SourceMaterialType[];
+  queryPlans: PlannedQuery[];
+  keywords: string[];
+}
+
+export interface ExtractStoreResult {
+  status: 'stored' | 'duplicate' | 'unsafe' | 'invalid' | 'extraction_failed' | 'storage_failed';
+  contentId: number | null;
+  content: ExtractedContent | null;
+  validationErrors?: string[];
 }
 
 export interface ValidationResult {
@@ -179,6 +348,7 @@ export interface ContentExtractor {
    * Returns the stored content ID or null when the item is skipped.
    */
   extractAndStore?(url: string): Promise<number | null>;
+  extractAndStoreDetailed?(url: string): Promise<ExtractStoreResult>;
 }
 
 export interface DataValidator {
@@ -219,6 +389,45 @@ export interface StorageService {
    * Get pending content from review queue
    */
   getPendingContent(filters?: ContentFilters): Promise<ContentItem[]>;
+
+  getPendingContentById(contentId: number): Promise<ContentItem | null>;
+
+  /**
+   * Get approved content for the public content library
+   */
+  getApprovedContent(): Promise<ApprovedContentItem[]>;
+
+  /**
+   * Get public, editorially published people profiles.
+   */
+  getPeople(): Promise<PersonProfileSummary[]>;
+
+  /**
+   * Get one public person profile by its stable slug.
+   */
+  getPersonBySlug(slug: string): Promise<PersonProfile | null>;
+
+  /**
+   * Get public, editorially published case collections.
+   */
+  getCases(): Promise<CaseSummary[]>;
+
+  /**
+   * Get one public case collection and all of its linked material.
+   */
+  getCaseBySlug(slug: string): Promise<CaseDetail | null>;
+
+  /**
+   * Get every case, including drafts, for the local admin console.
+   */
+  getAdminCases(): Promise<AdminCasesWorkspace>;
+
+  /**
+   * Create or update a case and replace its approved-content/person links.
+   */
+  saveAdminCase(caseId: number | null, input: AdminCaseInput): Promise<number>;
+
+  saveAdminPerson(input: AdminPersonInput): Promise<number>;
   
   /**
    * Manage keywords

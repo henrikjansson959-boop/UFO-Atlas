@@ -13,6 +13,9 @@ export type RecentScanEntry = {
   keywordsUsed: string[];
   aiAssistRequested: boolean;
   aiAssistApplied: boolean;
+  duplicateSkippedCount: number;
+  unsafeSkippedCount: number;
+  offTopicSkippedCount: number;
 };
 
 export type ActiveScanState = {
@@ -60,6 +63,9 @@ export function saveRecentScan(result: ScanResult, promptText: string): void {
     keywordsUsed: result.keywordsUsed,
     aiAssistRequested: result.aiAssistRequested,
     aiAssistApplied: result.aiAssistApplied,
+    duplicateSkippedCount: result.duplicateSkippedCount,
+    unsafeSkippedCount: result.unsafeSkippedCount,
+    offTopicSkippedCount: result.offTopicSkippedCount,
   };
 
   const nextEntries = [
